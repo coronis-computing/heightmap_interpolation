@@ -4,21 +4,21 @@ Interpolation functions for heightmaps developed within the EMODnet Bathymetry (
 
 ## Requirements
 
-This project uses Python 3 and the following libraries:
-* numpy
-* haversine
-* mpmath
-* argparse
-* scipy
-* matplotlib
-* netCDF4
-* geopy
-* geopandas
-* Pillow
+This project uses Python 3 and the following packages:
+* [numpy](https://numpy.org/)
+* [haversine](https://pypi.org/project/haversine/)
+* [mpmath](http://mpmath.org/)
+* [argparse](https://docs.python.org/3/library/argparse.html)
+* [scipy](https://www.scipy.org/)
+* [matplotlib](https://matplotlib.org/)
+* [netCDF4](https://unidata.github.io/netcdf4-python/netCDF4/index.html)
+* [geopy](https://pypi.org/project/geopy/)
+* [geopandas](https://geopandas.org/)
+* [Pillow](https://pypi.org/project/Pillow/)
 
 ## Installation
 
-In order to install the library and all requirements just use:
+This package and all its requirements can be installed through `setuptools` using:
 
 ```
 python setup.py install 
@@ -26,19 +26,8 @@ python setup.py install
 
 ## Usage
 
-This toolbox implements a set of Radial Basis Functions (RBFs) interpolants on elevation data. The set of RBF is the following:
-* linear.
-* cubic.
-* quintic.
-* thinplate.
-* green.
-* multiquadric.
-* tension.
-* regularized.
-* gaussian.
-* wendland.
-
-A simple demo of the behaviour of each RBF can be seen in the `demo_rbf.py` script:
+This toolbox implements a set of Radial Basis Functions (RBF) interpolants on elevation data. A simple demo of the 
+behaviour of each RBF type can be seen in the `demo_rbf.py` script:
 
 ```
 python demo_rbf.py
@@ -47,12 +36,13 @@ python demo_rbf.py
 
 Since the complexity of a RBF interpolant highly depends on the number of input (reference) data points, we provide some 
 heuristics in order to allow the interpolation of large-scale data. We use a Partition of Unity (PU) approach, where we subdivide
-the domain into overlapping circles containing a minimum number of data points, where we compute a local RBF interpolant.
+the domain into overlapping circles containing a minimum number of data points, and we compute a local RBF interpolant for each sub-domain.
 The contributions of the different interpolants are blended together using PU weighting. Since the domain decomposition 
-follows a Quad-Tree space partition, we name it QTPURBF
+follows a Quad-Tree space partition, we name it QTPURBF.
 
-We provide the app `interpolate_netcdf4.py` to run the interpolation using both the original RBF formulation and/or the QTPURBF on NetCDF4 following 
-the specifications of the EMODnet Bathymetry project. In its simple form, one just need to run:
+We provide the app `interpolate_netcdf4.py` to run the interpolation using both the original RBF formulation and/or the 
+QTPURBF on NetCDF4 following the specifications of the EMODnet Bathymetry project. In its simple form, one just need to 
+run:
 
 ```
 python interpolate_netcdf4.py <input_netcdf> <output_netcdf>
@@ -61,7 +51,7 @@ python interpolate_netcdf4.py <input_netcdf> <output_netcdf>
 It takes the non-interpolated data points in the NetCDF to create an interpolant using either RBF (for small datasets) 
 or QTPURBF (for large datasets). Then, it evaluates the interpolant at the required query locations to interpolate.  
 
-However, you can list all available options with the `-h` or `--help` flag:
+You can list all available options with the `-h` or `--help` flag:
 
 ```
 python interpolate_netcdf4.py -h
@@ -78,18 +68,18 @@ of them in more detail in the following:
 * Related to the computation of the RBF interpolant. Note that most of them also define the local RBF interpolation in case of using the PU:
     * `--rbf_max_ref_points <integer>`: Maximum number of data points to use a single RBF interpolation. Datasets with a number of reference points greater than this will use a partition of unity.
     * `--rbf_distance_type <string>`: Distance type. Available: euclidean (default), haversine, vincenty. While it may be more correct to use haversine or vincenty functions in geographic coordinates, keep in mind that they are not as optimized as the Euclidean distance, and therefore their use in large datasets is NOT RECOMMENDED.
-    * `--rbf_type RBF_TYPE <string>`. Available: linear, cubic, quintic, gaussian, multiquadric, green, regularized, tension, thinplate (default), wendland.
+    * `--rbf_type <string>`. The type of RBF to use. Available: linear, cubic, quintic, gaussian, multiquadric, green, regularized, tension, thinplate (default), wendland.
     * `--rbf_epsilon <float>`: Epsilon parameter of the RBF. Also known as "shape parameter" in the RBF literature. Please check each RBF documentation for its meaning. Required just for the following RBF types: gaussian, multiquadric, regularized, tension, wendland.
     * `--rbf_regularization <float>`: Regularization scalar to use in the RBF (optional).
     * `--rbf_polynomial_degree <integer>`: Degree of the global polynomial fit used in the RBF formulation. Valid: -1 (no polynomial fit), 0 (constant), 1 (linear), 2 (quadric), 3 (cubic).
-* Related to QTPURBF interpolation:
+* Related to the QTPURBF interpolant:
     * `--pu_overlap <float>`: Overlap factor between circles in neighboring sub-domains in the partition. The radius of a QuadTree cell, computed as half its diagonal, is enlarged by this factor
     * `--pu_min_point_in_cell <integer>`: Minimum number of points in a QuadTree cell.
     * `--pu_min_cell_size_percent <float>`: Minimum cell size, specified as a percentage [0..1] of the max(width, height) of the query domain.
     * `--pu_overlap_increment <float>`: If, after creating the QuadTree, a cell contains less than pu_min_point_in_cell, the radius will be iteratively incremented until this condition is satisfied. This parameter specifies how much the radius of a cell increments at each iteration.
-* Display results on screen:
+* Related to the display of results:
     * `-v, --verbose`: Verbosity flag, activate it to have feedback of the current steps of the process in the command line.
-    * `-s, --show`: Show/plot interpolation problem and results.
+    * `-s, --show`: Show/plot the interpolation problem and the results.
 
 ## Acknowledgements
 
