@@ -40,13 +40,13 @@ def tension_spline_rbf(r, e):
     """
 
     # Singularity at 0, scalar value
-    if np.isscalar(r) and r == 0:
+    if np.isscalar(r) and r < 1e-15:
         return 0
 
     Ce = 0.5772156649015328606065120900824  # Value of the euler constant
     fx = -(1/(2*math.pi*e*e))*(np.log(r*e/2)+Ce+scipy.special.kn(0, r*e))
 
     if not np.isscalar(r):
-        fx[(r == 0)] = 0
+        fx[(r < 1e-15)] = 0
 
     return fx
