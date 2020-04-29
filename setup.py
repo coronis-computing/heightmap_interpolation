@@ -18,15 +18,16 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from setuptools import setup
+import setuptools
 
-setup(name='Heightmap Interpolation',
+setuptools.setup(
+      name='Heightmap Interpolation',
       version='1.0',
       description='EMODnet Bathymetry Heightmap Interpolation Package',
       author='Ricard Campos',
       author_email='ricard.campos@coronis.es',
       url='',
-      packages=['heightmap_interpolation'],
+      packages=setuptools.find_packages(),
       install_requires=[
             'numpy',
             'haversine',
@@ -39,4 +40,5 @@ setup(name='Heightmap Interpolation',
             'geopandas',
             'Pillow'
       ],
+      python_requires='>=3.5',
       )
