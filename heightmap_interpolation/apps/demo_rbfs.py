@@ -135,7 +135,7 @@ demo_parameters = {
         },
         "regularized_rbf": {
             "polynomial_degree": 1,
-            "epsilon": 0.1,
+            "epsilon": 0.01,
             "regularization": 0
         },
         "gaussian_rbf": {
