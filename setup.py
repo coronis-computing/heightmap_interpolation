@@ -38,7 +38,15 @@ setuptools.setup(
             'netCDF4',
             'geopy',
             'geopandas',
-            'Pillow'
+            'Pillow',
+            'Cython',
+            'cvxpy',
+            'opencv-python',
+            'pyfftw'
       ],
       python_requires='>=3.5',
       )
+
+# 'matplotlib==3.3',
+#'scipy==1.5.4',
+#'numpy==1.19.5',

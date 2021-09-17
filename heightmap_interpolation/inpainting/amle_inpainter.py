@@ -1,0 +1,43 @@
+from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
+from scipy.ndimage.filters import convolve1d
+import numpy as np
+
+
+class AMLEInpainter(FDPDEInpainter):
+    """ Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
+    Implements the method in:
+        Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
+        Interpolation of Digital Elevation Models Using AMLE and Related
+        Methods. IEEE TRANSACTIONS ON GEOSCIENCE AND REMOTE SENSING, VOL. 40,
+        NO. 2, FEBRUARY 2002
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Pre-compute 1D kernels
+        self.backward_diff_kernel = [-1, 1, 0]
+        self.forward_diff_kernel = [0, -1, 1]
+        self.centered_diff_kernel = [-1, 0, 1]
+
+    def step_fun(self, f):
+        # First derivatives in X/Y
+        ux = convolve1d(f, self.forward_diff_kernel, axis=0)
+        uy = convolve1d(f, self.forward_diff_kernel, axis=1)
+
+        # Second derivatives
+        uxx = convolve1d(ux, self.backward_diff_kernel, axis=0)
+        uxy = convolve1d(ux, self.backward_diff_kernel, axis=1)
+        uyx = convolve1d(uy, self.backward_diff_kernel, axis=0)
+        uyy = convolve1d(uy, self.backward_diff_kernel, axis=1)
+
+        # Du/|Du| with central differences
+        v0 = convolve1d(f, self.centered_diff_kernel, axis=0)
+        v1 = convolve1d(f, self.centered_diff_kernel, axis=1)
+
+        # Normalize the direction field
+        dennormal = np.sqrt(v0*v0 + v1*v1 + 1e-15)
+        v0 = v0/dennormal
+        v1 = v1/dennormal
+
+        return uxx*v0*v0 + uyy*v1*v1 + (uxy+uyx)*v0*v1
