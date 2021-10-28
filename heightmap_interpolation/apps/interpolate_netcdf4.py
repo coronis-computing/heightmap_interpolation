@@ -326,6 +326,7 @@ def parse_args(args=None):
 
     return param
 
+
 # Main function
 if __name__ == "__main__":
     interpolate(parse_args())

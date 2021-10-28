@@ -15,12 +15,13 @@ class TVInpainter(FDPDEInpainter):
         self.epsilon = kwargs.pop("epsilon", 1e-2)
         if self.epsilon <= 0:
             raise ValueError("Epsilon parameter must be greater than zero")
+        self.diff_ops = diff.DifferentialOperators(self.convolver)
 
-    def step_fun(self, f):
+    def step_fun(self, f, mask=None):
         # DevNotes:
         #   - We are not using the np.gradient() function because it uses 2nd order approximation (central differences) to compute the gradients, and this leads to "blocky" solutions for the PDE... Need to check why!
         #   - The first gradient uses forward differences, and the gradients inside "divergence" use backward differences. In this way, the resulting divergence is "aligned" to f
-        return diff.divergence(self.neps(diff.gradient(f)))
+        return self.diff_ops.divergence(self.neps(self.diff_ops.gradient(f, mask)), mask)
 
     def amplitude(self, g):
         return np.sqrt(g[0]*g[0] + g[1]*g[1] + self.epsilon*self.epsilon)
@@ -30,3 +31,8 @@ class TVInpainter(FDPDEInpainter):
         g[0] = np.divide(g[0], ampl)
         g[1] = np.divide(g[1], ampl)
         return g
+
+    def get_config(self):
+        config = super(TVInpainter, self).get_config()
+        config["epsilon"] = self.epsilon
+        return config

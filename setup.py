@@ -28,6 +28,7 @@ setuptools.setup(
       author_email='ricard.campos@coronis.es',
       url='',
       packages=setuptools.find_packages(),
+      include_package_data=True,
       install_requires=[
             'numpy',
             'haversine',
@@ -42,9 +43,12 @@ setuptools.setup(
             'Cython',
             'cvxpy',
             'opencv-python',
-            'pyfftw'
+            'pyfftw',
+            'numba',
+            'psutil',
+            'billiard'
       ],
-      python_requires='>=3.5',
+      python_requires='>=3.7',
       )
 
 # 'matplotlib==3.3',

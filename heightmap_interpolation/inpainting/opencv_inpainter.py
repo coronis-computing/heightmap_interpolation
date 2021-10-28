@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 
 
 class OpenCVInpainter():
@@ -17,5 +18,11 @@ class OpenCVInpainter():
             raise ValueError("Radius should be a positive value > 0")
 
     def inpaint(self, f, mask):
-        return cv2.inpaint(f, mask, self.radius, self.method)
+        mask = ~mask
+        mask_cv = mask.astype(np.uint8)  # convert to an unsigned byte
+        mask_cv *= 255
+        return cv2.inpaint(f, mask_cv, self.radius, self.method)
 
+    def get_config(self):
+        config = {"radius": self.radius}
+        return config

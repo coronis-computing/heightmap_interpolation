@@ -39,9 +39,13 @@ def imageToArray(i):
 
 def load_data(param):
     """Loads the data required for interpolation"""
+    return load_data_impl(param.input_file, param.elevation_var, param.interpolate_missing_values, param.areas)
+
+
+def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas = None):
 
     # Read the file
-    ds = nc.Dataset(param.input_file, "r", format="NETCDF4")
+    ds = nc.Dataset(input_file, "r", format="NETCDF4")
 
     # Get the dimensions of the grid
     num_lat = len(ds.dimensions["lat"])
@@ -52,10 +56,10 @@ def load_data(param):
     lons_1d = ds.variables["lon"][:]
 
     # Get the elevation data
-    elevation = ds.variables[param.elevation_var][:]
+    elevation = ds.variables[elevation_var][:]
 
     # Get a mask with the values to interpolate and the reference (known) values
-    if not param.interpolate_missing_values:
+    if not interpolate_missing_values:
         # Get a mask with the values to interpolate and the reference (known) valuesfrom the interpolation flag per-cell
         # we do not recompute interpolated area if interpolate_missing_values is set to true
         mask_int = ds.variables["interpolation_flag"][:]
@@ -76,12 +80,17 @@ def load_data(param):
             return
     ds.close()
 
+    # Change the masked array to a simple array
+    elevation = elevation.data
+    # Change NaNs by 0s
+    elevation[np.isnan(elevation)] = 0
+
     # Create the matrix of lat/lon coordinates out of the 1D arrays
     lats_mat = np.tile(lats_1d.reshape(-1, 1), (1, num_lon))
     lons_mat = np.tile(lons_1d, (num_lat, 1))
 
     # Are we using a KML to restrict the interpolation?
-    if param.areas:
+    if areas:
         # Then, the areas to interpolate are only defined by the polygons in the file
         mask_int.fill(False)
 
@@ -116,17 +125,21 @@ def load_data(param):
 
 
 def write_results(param, elevation, mask_int):
+    write_results_impl(param.output_file, param.input_file, elevation, mask_int, elevation_var=param.elevation_var, areas=param.areas, interpolate_missing_values=param.interpolate_missing_values)
+
+
+def write_results_impl(output_file, input_file, elevation, mask_int, elevation_var = "elevation", areas = None, interpolate_missing_values=False):
     # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
     # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
     # variable
-    if param.output_file is not None:
-        shutil.copy(param.input_file, param.output_file)
-        out_ds = nc.Dataset(param.output_file, "r+")
+    if output_file is not None:
+        shutil.copy(input_file, output_file)
+        out_ds = nc.Dataset(output_file, "r+")
     else:
-        out_ds = nc.Dataset(param.input_file, "r+")
+        out_ds = nc.Dataset(input_file, "r+")
 
-    out_ds.variables["elevation"][:] = elevation
-    if param.areas:
+    out_ds.variables[elevation_var][:] = elevation
+    if areas or interpolate_missing_values:
         # Also update the interpolated areas
         new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
         new_cell_interpolated_flag[mask_int] = 1
