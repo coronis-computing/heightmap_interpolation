@@ -24,6 +24,18 @@ This package and all its requirements can be installed through `setuptools` usin
 python setup.py install 
 ```
 
+Note that it requires python3.7 to run.
+
+If you prefer to install it in a virtual environment:
+
+```
+python3.7 -m venv venv
+source venv/bin/activate
+python3.7 -m ensurepip
+pip install --upgrade pip
+python3.7 setup.py install
+```
+
 ## Usage
 
 This toolbox implements a set of Radial Basis Functions (RBF) interpolants on elevation data. A simple demo of the 
