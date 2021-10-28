@@ -76,7 +76,8 @@ class FDPDEInpainter(ABC):
             raise ValueError("mgs_min_res must be an integer")
 
         # Some convenience variables to print progress
-        decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance)
+        #decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance) # DevNote: this does not work as expected yet...
+        decimal_places_to_show = 10
         self.print_progress_table_row_str = "|{:>11d}|{:>" + str(26) + "." + str(decimal_places_to_show) + "f}|"
         self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(26) + "." + str(
             decimal_places_to_show) + "f}|"

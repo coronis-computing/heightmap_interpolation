@@ -186,6 +186,7 @@ class InpaintingReporter():
         section_dir = os.path.join(self.docs_dir, "intro")
         doc_path = os.path.join(section_dir, "intro.md")
         if os.path.exists(doc_path) and not self.config["re-write"]:
+            self.section_files.append(doc_path)
             return
         os.makedirs(section_dir, exist_ok=True)
         # section_dir, doc_path = self.prepare_section("intro")
@@ -200,6 +201,36 @@ class InpaintingReporter():
 
         # Writes the intro section
         f.write("This report presents the execution results using the inpainting methods of the `heightmap_interpolation` toolbox.\n\n")
+
+        # Close the file
+        f.close()
+
+        # Append to the list of sections
+        self.section_files.append(doc_path)
+
+    def write_machine_resources_section(self):
+        section_dir = os.path.join(self.docs_dir, "resources")
+        doc_path = os.path.join(section_dir, "resources.md")
+        if os.path.exists(doc_path) and not self.config["re-write"]:
+            self.section_files.append(doc_path)
+            return
+        os.makedirs(section_dir, exist_ok=True)
+        # section_dir, doc_path = self.prepare_section("intro")
+        # if not section_dir:
+        #     return
+
+        # Open the file
+        f = open(doc_path, 'w')
+
+        # Writes the main title
+        f.write("# Resources\n\n")
+
+        # Writes the intro section
+        f.write("All the tests in this report were executed on a computer with the following resources:\n\n")
+
+        f.write("| **CPU cores** | **RAM memory (Gb)**\n" +
+                "| :---: | :---: |\n" +
+                "| {:d} | {:.2f} |\n\n".format(mp.cpu_count(), psutil.virtual_memory().total/(1024**3)))
 
         # Close the file
         f.close()
@@ -230,10 +261,10 @@ class InpaintingReporter():
     def set_tests_paths(self, tst_config):
         self.test_subdir = os.path.join("dataset_{:d}".format(self.ds_counter), "test_{:d}".format(self.test_counter))
         self.section_dir = os.path.join(self.docs_dir, self.test_subdir)
-        self.results_dir = os.path.join(self.results_dir, self.test_subdir)
+        self.current_results_dir = os.path.join(self.results_dir, self.test_subdir)
         self.doc_path = os.path.join(self.section_dir, "test_{:d}.md".format(self.test_counter))
         os.makedirs(self.section_dir, exist_ok=True)
-        os.makedirs(self.results_dir, exist_ok=True)
+        os.makedirs(self.current_results_dir, exist_ok=True)
         if tst_config["name"]:
             self.test_base_name = "{:s}_test_{:d}".format(tst_config["name"], self.test_counter)
         else:
@@ -338,9 +369,9 @@ class InpaintingReporter():
 
     def run_test(self, tst_config):
         # Create some output folders
-        test_subdir = os.path.join("dataset_{:d}".format(self.ds_counter), "test_{:d}".format(self.test_counter))
-        results_dir = os.path.join(self.results_dir, test_subdir)
-        os.makedirs(results_dir, exist_ok=True)
+        # test_subdir = os.path.join("dataset_{:d}".format(self.ds_counter), "test_{:d}".format(self.test_counter))
+        # results_dir = os.path.join(self.results_dir, test_subdir)
+        # os.makedirs(results_dir, exist_ok=True)
 
         # Create the inpainter
         # inpainter = create_fd_pde_inpainter(tst_config["inpainting_method"], tst_config["inpainting_config"])
@@ -376,7 +407,7 @@ class InpaintingReporter():
             test_base_name = "{:s}_test_{:d}".format(tst_config["name"], self.test_counter)
         else:
             test_base_name = "test_{:d}".format(self.test_counter)
-        inpainting_results_netcdf = os.path.join(results_dir, test_base_name + ".nc")
+        inpainting_results_netcdf = os.path.join(self.current_results_dir, test_base_name + ".nc")
         write_results_impl(inpainting_results_netcdf,
                            self.ds_config["netcdf_file"],
                            inpainted_elevation, self.ds_inpainting_mask,
@@ -384,7 +415,7 @@ class InpaintingReporter():
                            interpolate_missing_values=self.ds_config["interpolate_missing_values"])
 
         # Save the configuration also, so that we have a reference, and a mark that the test was executed
-        test_config = os.path.join(self.results_dir, self.test_base_name + "_config.json")
+        test_config = os.path.join(self.current_results_dir, self.test_base_name + "_config.json")
 
         # Update the config to store with the actual (full) inpainter configuration
         inpainter_config = self.inpainter.get_config()
@@ -402,7 +433,7 @@ class InpaintingReporter():
         # # Check that output paths exist at least
         # test_subdir = os.path.join("dataset_{:d}".format(self.ds_counter), "test_{:d}".format(self.test_counter))
         # section_dir = os.path.join(self.docs_dir, test_subdir)
-        # results_dir = os.path.join(self.results_dir, test_subdir)
+        # results_dir = os.path.join(self.current_results_dir, test_subdir)
         # doc_path = os.path.join(section_dir, "test_{:d}.md".format(self.test_counter))
         # if not os.path.exists(results_dir) or not os.path.exists(doc_path):
         #     return False
@@ -416,7 +447,7 @@ class InpaintingReporter():
         # Save the configuration also, so that we have a reference, and a mark that the test was executed
 
 
-        prev_config_file = os.path.join(self.results_dir, self.test_base_name + "_config.json")
+        prev_config_file = os.path.join(self.current_results_dir, self.test_base_name + "_config.json")
         if not os.path.exists(prev_config_file):
             return False
         f = open(prev_config_file)
@@ -456,7 +487,7 @@ class InpaintingReporter():
         else:
             f.write("\n\n")
 
-        f.write("Executed the *{:s}* inpainting method with the following parameters (includes defaults):\n\n".format(tst_config["inpainting_method"]))
+        f.write("Executed the *{:s}* inpainting method with the following parameters (defaults values also listed):\n\n".format(tst_config["inpainting_method"]))
 
         config = self.inpainter.get_config()
         for key, value in config.items():
@@ -539,8 +570,10 @@ class InpaintingReporter():
         # Intro
         print("- Writing generic intro section")
         self.write_intro_section()
-
-        # TODO: Describe resources where the tests will take place
+        
+        # Resources
+        print("- Writing machine resources section")
+        self.write_machine_resources_section()
 
         # Run over each dataset
         for ds_config in self.config["datasets"]:

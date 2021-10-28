@@ -141,7 +141,15 @@ def write_results_impl(output_file, input_file, elevation, mask_int, elevation_v
     out_ds.variables[elevation_var][:] = elevation
     if areas or interpolate_missing_values:
         # Also update the interpolated areas
-        new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
+        if "interpolation_flag" not in out_ds.variables.keys():
+            out_ds.createVariable('interpolation_flag', 'int8', ('lat', 'lon'))
+            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
+            new_cell_interpolated_flag[~mask_int] = 0
+        else:
+            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
         new_cell_interpolated_flag[mask_int] = 1
+
+        # # Create the interpolation flag, if was not present in the input
+        # new_cell_interpolated_flag[mask_int] = 1
         out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
 
