@@ -40,7 +40,6 @@ setuptools.setup(
             'geopy',
             'geopandas',
             'Pillow',
-            'Cython',
             'cvxpy',
             'opencv-python',
             'pyfftw',
