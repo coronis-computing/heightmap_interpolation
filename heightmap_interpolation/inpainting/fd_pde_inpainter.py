@@ -152,6 +152,7 @@ class FDPDEInpainter(ABC):
         self.print_start("Creating the image pyramid... ")
         image_pyramid = [image]
         mask_pyramid = [mask]
+        num_levels = self.mgs_levels
         for level in range(1, self.mgs_levels):
             # Resize the image
             width = math.ceil(image_pyramid[level-1].shape[1] / 2)
@@ -171,13 +172,13 @@ class FDPDEInpainter(ABC):
         self.print_start("[Pyramid Level {:d}] Initializing the deepest level... ".format(num_levels - 1))
         init_lower_scale = self.initializer.initialize(image_pyramid[num_levels-1], mask_pyramid[num_levels-1])
         self.print_end()
-        self.print_start("[Pyramid Level {:d}] Inpainting... ".format(num_levels-1))
+        self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels-1))
         inpainted_lower_scale = self.inpaint_grid(init_lower_scale, mask_pyramid[num_levels-1] > 0)
         self.print_end()
         if num_levels == 1:
             return inpainted_lower_scale
         for level in range(num_levels-2, -1, -1):
-            self.print_start("[Pyramid Level {:d}] Inpainting... ".format(level))
+            self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(level))
 
             image = image_pyramid[level]
             mask = mask_pyramid[level]
