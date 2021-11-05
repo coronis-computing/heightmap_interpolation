@@ -86,6 +86,7 @@ class FDPDEInpainter(ABC):
         if self.debug_dir:
             os.makedirs(self.debug_dir, exist_ok=True)
             os.makedirs(os.path.join(self.debug_dir, "progress"), exist_ok=True)
+        self.current_level_debug_dir = self.debug_dir
 
         # Init the initializer object
         self.initializer = Initializer(self.init_with)
@@ -127,7 +128,7 @@ class FDPDEInpainter(ABC):
             image = self.initializer.initialize(image, mask)
             if self.debug_dir:
                 imgplot = plt.imshow(image)
-                plt.savefig(os.path.join(self.debug_dir, "initialization.png"), bbox_inches="tight")
+                plt.savefig(os.path.join(self.current_level_debug_dir, "initialization.png"), bbox_inches="tight")
             # Inpaint
             self.print_msg("* Optimization:")
             inpainted = self.inpaint_grid(image, mask)
@@ -171,6 +172,12 @@ class FDPDEInpainter(ABC):
         # the previous level in the pyramid
         self.print_start("[Pyramid Level {:d}] Initializing the deepest level... ".format(num_levels - 1))
         init_lower_scale = self.initializer.initialize(image_pyramid[num_levels-1], mask_pyramid[num_levels-1])
+        if self.debug_dir:
+            self.current_level_debug_dir = os.path.join(self.debug_dir, str(num_levels-1))
+            os.makedirs(self.current_level_debug_dir, exist_ok=True)
+            os.makedirs(os.path.join(self.current_level_debug_dir, "progress"), exist_ok=True)
+            imgplot = plt.imshow(image)
+            plt.savefig(os.path.join(self.current_level_debug_dir, "initialization.png"), bbox_inches="tight")
         self.print_end()
         self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels-1))
         inpainted_lower_scale = self.inpaint_grid(init_lower_scale, mask_pyramid[num_levels-1] > 0)
@@ -189,7 +196,13 @@ class FDPDEInpainter(ABC):
             # Use the upscaled solution as initial guess
             image = upscaled_inpainted_lower_scale*(1-mask) + image*mask
 
-            # Inpaint
+            # Prepare the debug folder
+            if self.debug_dir:
+                self.current_level_debug_dir = os.path.join(self.debug_dir, str(level))
+                os.makedirs(self.current_level_debug_dir, exist_ok=True)
+                os.makedirs(os.path.join(self.current_level_debug_dir, "progress"), exist_ok=True)
+
+                # Inpaint
             inpainted = self.inpaint_grid(image, mask)
 
             self.print_end()
@@ -255,7 +268,7 @@ class FDPDEInpainter(ABC):
 
             if self.debug_dir and i % self.print_progress_iters == 0:
                 imgplot = plt.imshow(f)
-                plt.savefig(os.path.join(self.debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
+                plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
 
             #  % Stop if "almost" no change
             if diff < self.rel_change_tolerance:
@@ -265,7 +278,7 @@ class FDPDEInpainter(ABC):
                     print("+-----------+--------------------------+")
                 if self.debug_dir:
                     imgplot = plt.imshow(f)
-                    plt.savefig(os.path.join(self.debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
+                    plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
                 return f
 
             # Check for increasing relative changes... should not happen in a convex optimization!
