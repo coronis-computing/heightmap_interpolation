@@ -30,7 +30,7 @@ class Initializer():
             y1 = yy[mask]
             ref = image[mask]
             # Use griddata to interpolate
-            interp = interpolate.griddata((x1, y1), ref.ravel(), (xx, yy), method=self.init_with.lower())
+            interp = interpolate.griddata((x1, y1), ref.ravel(), (xx, yy), method=self.init_with.lower(), fill_value=fill_value)
             image[~mask] = interp[~mask]
         elif self.init_with.lower() == "sobolev":
             params_dict = {"update_step_size": 0.8/4,
