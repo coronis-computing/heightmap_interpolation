@@ -319,7 +319,7 @@ def parse_args(args=None):
     parser.add_argument("-v, --verbose", action="store_true", dest="verbose", default=False,
                         help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")
     parser.add_argument("-interpolate_missing_values", action="store_true", default=False,
-                        help="Missing value flag, activate it to interpolate missing values instead of re interpolate previously interpolated values")
+                        help="Missing value flag, activate it to interpolate missing values (NaNs in the --elevation_var variable) instead using the --interpolation_var")
     parser.add_argument("-s, --show", action="store_true", dest="show", default=False,
                         help="Show interpolation problem and results on screen")
     param = parser.parse_args(args)
