@@ -3,7 +3,7 @@ FROM python:3.7-bullseye
 # Install the pandoc package and related (for automatic reporting)
 RUN apt-get update -qq
 RUN apt-get install -y  \
-    pandoc texlive-latex-recommended
+    pandoc texlive-latex-recommended texlive-latex-extra texlive-pictures
 
 # Cleanup apt-get stuff
 RUN apt-get -y autoremove &&\
@@ -24,5 +24,7 @@ RUN python setup.py install
 
 # Put the dir containing the main "interpolate_netcdf4.py" in the path for convenience
 ENV PATH=$PATH:/usr/local/src/heightmap_interpolation/heightmap_interpolation/apps
+# And also the reporter
+ENV PATH=$PATH:/usr/local/src/heightmap_interpolation/heightmap_interpolation/reporter
 
 CMD ["bash"]
