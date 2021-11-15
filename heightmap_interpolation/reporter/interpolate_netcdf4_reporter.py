@@ -776,7 +776,7 @@ class InterpolateNetCDF4Reporter():
                 "-H", header_template_path,
                 #"-B", "before_body.tex",
                 "--listings",
-                "--latex-engine", "xelatex",
+                #"--latex-engine", "xelatex",
                 "-N",
                 #"-f", "markdown-implicit_figures",
                 "-o", self.config["output_file"]]
