@@ -283,7 +283,7 @@ def interpolate(param):
 def parse_args(args=None):
     # Parameters
     parser = argparse.ArgumentParser(
-        description="Interpolate terrain data in a SeaDataNet_1.0 CF1.6-compliant netCDF4 file")
+        description="Interpolate terrain data in a SeaDataNet_1.0 CF1.6-compliant netCDF4 file using the RBF (or PU-RBF) interpolant")
     parser.add_argument("input_file", action="store", type=str,
                         help="Input NetCDF file")
     parser.add_argument("-output_file", action="store", type=str,

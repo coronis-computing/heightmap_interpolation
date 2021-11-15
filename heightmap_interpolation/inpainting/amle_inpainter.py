@@ -6,11 +6,12 @@ import heightmap_interpolation.inpainting.differential as diff
 
 class AMLEInpainter(FDPDEInpainter):
     """ Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
-    Implements the method in:
-        Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
-        Interpolation of Digital Elevation Models Using AMLE and Related
-        Methods. IEEE TRANSACTIONS ON GEOSCIENCE AND REMOTE SENSING, VOL. 40,
-        NO. 2, FEBRUARY 2002
+
+        Implements the method in:
+            Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
+            Interpolation of Digital Elevation Models Using AMLE and Related
+            Methods. IEEE TRANSACTIONS ON GEOSCIENCE AND REMOTE SENSING, VOL. 40,
+            NO. 2, FEBRUARY 2002
     """
 
     def __init__(self, **kwargs):

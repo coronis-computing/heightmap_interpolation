@@ -134,9 +134,10 @@ def write_results_impl(output_file, input_file, elevation, mask_int, elevation_v
     # variable
     if output_file is not None:
         shutil.copy(input_file, output_file)
-        out_ds = nc.Dataset(output_file, "r+")
     else:
-        out_ds = nc.Dataset(input_file, "r+")
+        raise ValueError("Missing output file path!")
+
+    out_ds = nc.Dataset(output_file, "r+")
 
     out_ds.variables[elevation_var][:] = elevation
     if areas or interpolate_missing_values:
@@ -153,3 +154,4 @@ def write_results_impl(output_file, input_file, elevation, mask_int, elevation_v
         # new_cell_interpolated_flag[mask_int] = 1
         out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
 
+    out_ds.close()

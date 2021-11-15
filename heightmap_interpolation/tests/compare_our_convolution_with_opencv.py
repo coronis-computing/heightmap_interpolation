@@ -2,7 +2,7 @@ import argparse
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from heightmap_interpolation.inpainting.convolve_at_mask import nb_convolve_at_mask, nb_convolve_at_mask_guvec
+from heightmap_interpolation.inpainting.convolve_at_mask import nb_convolve_at_mask, nb_convolve_at_mask_guvec, nb_convolve_at_mask_where
 from timeit import default_timer as timer
 
 
@@ -35,7 +35,8 @@ def my_fun(param):
         mask = np.asarray(mask, dtype="bool")
     else:
         mask = np.full(image.shape, True, dtype=bool)
-        mask[:, 0:(mask.shape[1] // 2)] = False # half of the image should not be taken into account
+        mask[:, 0:(mask.shape[1] // 4)*3] = False # half of the image should not be taken into account
+        # mask[:, :-2] = False  # half of the image should not be taken into account
 
     # Create the filter
     # filter = np.random.random((param.filter_size, param.filter_size))
@@ -47,10 +48,10 @@ def my_fun(param):
 
     # Force numba compilation before timing
     res = nb_convolve_at_mask(np.random.random((3, 3)), np.ones((3, 3), dtype=bool), np.random.random((3, 3)))
-    res = nb_convolve_at_mask_guvec(np.random.random((3, 3)), np.ones((3, 3), dtype=bool), np.random.random((3, 3)))
+    # res = nb_convolve_at_mask_guvec(np.random.random((3, 3)), np.ones((3, 3), dtype=bool), np.random.random((3, 3)))
 
     # Apply the convolution using our methods
-    num_tests = 1000
+    num_tests = 10
 
     ts = timer()
     for i in range(num_tests):
@@ -58,19 +59,19 @@ def my_fun(param):
     te = timer()
     print("Our convolution (pure numba) executed in {:f} sec.".format((te - ts)))
 
-    ts = timer()
-    for i in range(num_tests):
-        our_res = nb_convolve_at_mask_guvec(image, mask, filt)
-    te = timer()
-    print("Our convolution (guvec) executed in {:f} sec.".format((te - ts)))
+    # ts = timer()
+    # for i in range(num_tests):
+    #     our_res = nb_convolve_at_mask_guvec(image, mask, filt)
+    # te = timer()
+    # print("Our convolution (guvec) executed in {:f} sec.".format((te - ts)))
 
     # Apply OpenCV's filter2D method
     ts = timer()
     for i in range(num_tests):
         cv_res = cv2.filter2D(image, -1, filt)
-        if param.mask:
+        # if param.mask:
             # Mask the results
-            cv_res = image*(1-mask) + cv_res*mask
+        cv_res = image*(1-mask) + cv_res*mask
     te = timer()
     print("OpenCV's filter2D executed in {:f} sec.".format((te - ts)))
 

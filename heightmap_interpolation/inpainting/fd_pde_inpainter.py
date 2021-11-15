@@ -51,7 +51,6 @@ class FDPDEInpainter(ABC):
         self.relaxation = kwargs.pop("relaxation", 0)
         self.print_progress = kwargs.pop("print_progress", False)
         self.print_progress_iters = kwargs.pop("print_progress_iters", 1000)
-        self.show_progress = kwargs.pop("show_progress", False)
         self.mgs_levels = kwargs.pop("mgs_levels", 1)
         self.mgs_min_res = kwargs.pop("mgs_min_res", 100)
         self.init_with = kwargs.pop("init_with", "zeros")
@@ -100,7 +99,6 @@ class FDPDEInpainter(ABC):
                   "relaxation": self.relaxation,
                   "print_progress": self.print_progress,
                   "print_progress_iters": self.print_progress_iters,
-                  "show_progress": self.show_progress,
                   "mgs_levels": self.mgs_levels,
                   "mgs_min_res": self.mgs_min_res,
                   "init_with": self.init_with,
@@ -135,14 +133,14 @@ class FDPDEInpainter(ABC):
         return inpainted
 
     def inpaint_multigrid(self, image, mask):
-        # Multigrid solver for the inpainting problem
-        #
-        # Input:
-        #   img: input image to be inpainted
-        #   mask: logical mask of the same size as the input image.
-        #         True == known pixels, False == unknown pixels to be inpainted
-        # Output:
-        #   f: inpainted image
+        """Multigrid solver for inpainting problems
+        Args:
+            img: input image to be inpainted
+            mask: logical mask of the same size as the input image.
+                  True == known pixels, False == unknown pixels to be inpainted
+        Returns:
+            inpainted image
+        """
 
         # Check if it is worth applying a multi-grid solver for the resolution of the image
         if image.shape[0] < self.mgs_min_res or image.shape[1] < self.mgs_min_res:
@@ -163,8 +161,12 @@ class FDPDEInpainter(ABC):
                 num_levels = level
                 break
             dim = (width, height)
-            image_pyramid.append(cv2.resize(image_pyramid[level-1], dim))
+            image_rs = cv2.resize(image_pyramid[level-1], dim)
+            image_pyramid.append(image_rs)
             mask_rs = cv2.resize(np.asarray(mask_pyramid[level-1], dtype="uint8"), dim) == 1
+            # Special case! If the image contains nans, resizing may increase those nans out of the resized mask, so we extend it to include the positions which are NaN in the image
+            mask_valid = ~np.isnan(image_rs)
+            mask_rs = np.logical_and(mask_rs, mask_valid)
             mask_pyramid.append(mask_rs)
         self.print_end()
 
@@ -176,7 +178,7 @@ class FDPDEInpainter(ABC):
             self.current_level_debug_dir = os.path.join(self.debug_dir, str(num_levels-1))
             os.makedirs(self.current_level_debug_dir, exist_ok=True)
             os.makedirs(os.path.join(self.current_level_debug_dir, "progress"), exist_ok=True)
-            imgplot = plt.imshow(image)
+            imgplot = plt.imshow(init_lower_scale)
             plt.savefig(os.path.join(self.current_level_debug_dir, "initialization.png"), bbox_inches="tight")
         self.print_end()
         self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels-1))
@@ -193,8 +195,13 @@ class FDPDEInpainter(ABC):
             # Upscale the previous solution
             upscaled_inpainted_lower_scale = cv2.resize(inpainted_lower_scale, dsize=(image.shape[1], image.shape[0]))
 
+            # Special case: the first level of the pyramid may contain NaNs! (because we did not initialize it)
+            # This will make the masking below to fail, so remove and substitute by zeros
+            if level == 0 and np.any(np.isnan(image)):
+                image[np.isnan(image)] = 0
+
             # Use the upscaled solution as initial guess
-            image = upscaled_inpainted_lower_scale*(1-mask) + image*mask
+            image = upscaled_inpainted_lower_scale*(~mask) + image*mask
 
             # Prepare the debug folder
             if self.debug_dir:
@@ -239,6 +246,7 @@ class FDPDEInpainter(ABC):
 
         # Iterate
         diff = 100000
+        # last_diff = 0
         for i in range(0, self.max_iters):
             # Perform a step in the optimization
             # fnew = pi_fun(f + self.dt*self.step_fun(f, mask_inv))
@@ -271,7 +279,7 @@ class FDPDEInpainter(ABC):
                 plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
 
             #  % Stop if "almost" no change
-            if diff < self.rel_change_tolerance:
+            if i % self.rel_change_iters == 0 and diff < self.rel_change_tolerance:
                 if self.print_progress:
                     print("+-----------+--------------------------+")
                     print(self.print_progress_last_table_row_str.format(diff))
@@ -280,6 +288,9 @@ class FDPDEInpainter(ABC):
                     imgplot = plt.imshow(f)
                     plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
                 return f
+
+            # if i % self.rel_change_iters == 0:
+            #     last_diff = diff
 
             # Check for increasing relative changes... should not happen in a convex optimization!
             # if last_diff > diff:

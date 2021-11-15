@@ -1,11 +1,30 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2021 Coronis Computing S.L. (Spain)
+# All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Author: Ricard Campos (ricard.campos@coronis.es)
+
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 from heightmap_interpolation.misc.conditional_print import ConditionalPrint
 import cvxpy as cp
 from timeit import default_timer as timer
-from heightmap_interpolation.apps.common import load_data, write_results
+from heightmap_interpolation.apps.deprecated.common import load_data, write_results
 from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import create_fd_pde_inpainter
 import scipy
 
@@ -161,12 +180,12 @@ def parse_args(args=None):
                         help="Name of the variable storing the elevation grid in the input file.")
     parser.add_argument("--interpolation_flag_var", action="store", type=str, default="interpolation_flag",
                         help="Name of the variable storing the per-cell interpolation flag in the input file")
+    parser.add_argument("-interpolate_missing_values", action="store_true", default=False,
+                        help="Missing value flag, activate it to interpolate missing values (NaNs in the --elevation_var variable) instead using the --interpolation_var")
     parser.add_argument("--method", action="store", type=str, default="sobolev",
                         help="Name of the inpainting method to use. Available: sobolev, tv, ccst, amle")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,
                         help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")
-    parser.add_argument("--interpolate_missing_values", action="store_true", default=False,
-                        help="Missing value flag, activate it to interpolate missing values instead of re interpolate previously interpolated values")
     parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
                         help="Show interpolation problem and results on screen")
     parser.add_argument("--mgs_levels", action="store", dest="mgs_levels", default=1, type=int,

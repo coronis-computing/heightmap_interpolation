@@ -87,13 +87,17 @@ def gradient(f, **kwargs):
 
 
 def divergence(f):
-    """
-    Computes the divergence of the vector field f, corresponding to dFx/dx + dFy/dy + ...
-    Code extracted from: https://stackoverflow.com/questions/11435809/compute-divergence-of-vector-field-using-python (Daniel's answer)
-                         https://stackoverflow.com/questions/67970477/compute-divergence-with-python/67971515#67971515
+    """Computes the divergence of the vector field f, corresponding to dFx/dx + dFy/dy + ...
 
-    :param f: List of ndarrays, where every item of the list is one dimension of the vector field
-    :return: Single ndarray of the same shape as each of the items in f, which corresponds to a scalar field
+    Code extracted from:
+        https://stackoverflow.com/questions/11435809/compute-divergence-of-vector-field-using-python (Daniel's answer)
+        https://stackoverflow.com/questions/67970477/compute-divergence-with-python/67971515#67971515
+
+    Args:
+        f: List of ndarrays, where every item of the list is one dimension of the vector field.
+
+    Returns:
+        Single ndarray of the same shape as each of the items in f, which corresponds to a scalar field.
     """
     num_dims = len(f)
     # return np.ufunc.reduce(np.add, [np.gradient(f[i], axis=i) for i in range(num_dims)])
@@ -164,13 +168,17 @@ class DifferentialOperators(object):
             return [ux, uy]
 
     def divergence(self, f, mask=None):
-        """
-        Computes the divergence of the vector field f, corresponding to dFx/dx + dFy/dy + ...
-        Code extracted from: https://stackoverflow.com/questions/11435809/compute-divergence-of-vector-field-using-python (Daniel's answer)
-                             https://stackoverflow.com/questions/67970477/compute-divergence-with-python/67971515#67971515
+        """Computes the divergence of the vector field f, corresponding to dFx/dx + dFy/dy + ...
 
-        :param f: List of ndarrays, where every item of the list is one dimension of the vector field
-        :return: Single ndarray of the same shape as each of the items in f, which corresponds to a scalar field
+        Code extracted from:
+            https://stackoverflow.com/questions/11435809/compute-divergence-of-vector-field-using-python (Daniel's answer)
+            https://stackoverflow.com/questions/67970477/compute-divergence-with-python/67971515#67971515
+
+        Args:
+            f: List of ndarrays, where every item of the list is one dimension of the vector field.
+
+        Returns:
+            Single ndarray of the same shape as each of the items in f, which corresponds to a scalar field.
         """
         num_dims = len(f)
         # return np.ufunc.reduce(np.add, [np.gradient(f[i], axis=i) for i in range(num_dims)])

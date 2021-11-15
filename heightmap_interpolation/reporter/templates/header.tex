@@ -1,7 +1,21 @@
 \usepackage{fancyvrb,newverbs}
 \usepackage[top=2cm, bottom=1.5cm, left=2cm, right=2cm]{geometry}
 \usepackage{setspace}
-\usepackage{graphicx}
+%\usepackage{graphicx}
+
+%\usepackage{float}
+%\let\origfigure\figure
+%\let\endorigfigure\endfigure
+%\renewenvironment{figure}[1][2] {
+%    \expandafter\origfigure\expandafter[H]
+%} {
+%    \endorigfigure
+%}
+
+\usepackage{float}
+\makeatletter
+\def\fps@figure{H}
+\makeatother
 
 \let\oldtoc\tableofcontents
 \renewcommand{\tableofcontents}{\oldtoc\newpage}

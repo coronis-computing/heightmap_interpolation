@@ -22,7 +22,7 @@ from heightmap_interpolation.polynomials import bivariate_polynomials
 from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_cdist_functor
 from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_pdist_functor
 import numpy as np
-import scipy.spatial
+from scipy.linalg import cho_factor, cho_solve
 
 
 class RBFInterpolant(Interpolant):
@@ -93,6 +93,9 @@ class RBFInterpolant(Interpolant):
 
         # Solve the system of equations
         solution = np.linalg.solve(A, b)
+        # Solve the system of equations using Cholesky
+        # c, low = cho_factor(A)
+        # solution = cho_solve((c, low), [1, 1, 1, 1])
 
         # Recover the results
         self.weights = solution[:n]

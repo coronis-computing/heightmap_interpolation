@@ -60,7 +60,7 @@ def create_fd_pde_inpainter(method, custom_options=None):
     if options and custom_options:
         options = merge_two_dicts(options, custom_options)
 
-    if method.lower() == "sobolev":
+    if method.lower() == "sobolev" or method.lower() == "harmonic":
         inpainter = SobolevInpainter(**options)
     elif method.lower() == "tv":
         options["epsilon"] = 1

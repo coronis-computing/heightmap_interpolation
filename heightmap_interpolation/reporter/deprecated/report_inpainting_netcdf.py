@@ -1,5 +1,5 @@
 import argparse
-from heightmap_interpolation.reporter.inpaint_netcdf_reporter import InpaintingReporter
+from heightmap_interpolation.reporter.deprecated.inpaint_netcdf_reporter import InpaintingReporter
 import json
 
 
@@ -28,6 +28,7 @@ def parse_args(args=None):
 
     param = parser.parse_args(args)
     return param
+
 
 # Main function
 if __name__ == "__main__":

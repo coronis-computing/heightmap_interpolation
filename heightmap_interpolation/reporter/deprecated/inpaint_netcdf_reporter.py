@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import subprocess
 import json
-from heightmap_interpolation.apps.common import load_data_impl, write_results_impl
+from heightmap_interpolation.apps.deprecated.common import load_data_impl, write_results_impl
 from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import create_fd_pde_inpainter
 from timeit import default_timer as timer
 import time
@@ -52,8 +52,9 @@ def create_default_config():
                 ]
             }
         ]
-
     }
+
+    return config
 
 
 def inpainting_thread(inpainter, elevation, inpainting_mask, inpainted_elevation_mp, queue):

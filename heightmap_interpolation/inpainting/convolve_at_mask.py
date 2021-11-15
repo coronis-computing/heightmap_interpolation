@@ -63,6 +63,33 @@ def nb_convolve_at_mask(image, mask, filt):
     return result
 
 
+@njit(parallel=False, nogil=True, fastmath=True)
+def nb_convolve_at_mask_where(image, mask, filt):
+    M, N = image.shape
+    Mf, Nf = filt.shape
+    Mf2 = Mf // 2
+    Nf2 = Nf // 2
+    inds_mask = np.where(mask)
+    result = np.copy(image)
+    for a in range(0, len(inds_mask[0])):
+        i = inds_mask[0][a]
+        j = inds_mask[1][a]
+        num = 0
+        for ii in prange(Mf):
+            for jj in prange(Nf):
+                img_ind_i = abs(i - Mf2 + ii)
+                if img_ind_i > M - 1:
+                    mod_i = img_ind_i % (M - 1)
+                    img_ind_i = M - 1 - mod_i
+                img_ind_j = abs(j - Nf2 + jj)
+                if img_ind_j > N - 1:
+                    mod_j = img_ind_j % (N - 1)
+                    img_ind_j = N - 1 - mod_j
+                num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+        result[i, j] = num
+    return result
+
+
 @guvectorize(
     ["void(float32[:,:], boolean[:,:], float32[:,:], float32[:,:])",
      "void(float32[:,:], boolean[:,:], float64[:,:], float32[:,:])",
