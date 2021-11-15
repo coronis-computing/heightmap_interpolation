@@ -273,7 +273,8 @@ def interpolate(params):
                 condp.print("- Inpainting took a total of {:.2f} sec.".format(te - ts))
 
             # "Paste" the results into the original elevation matrix
-            elevation_int[rmin:rmax+1, cmin:cmax+1] = cur_elevation_int
+            # elevation_int[rmin:rmax+1, cmin:cmax+1] = cur_elevation_int
+            elevation_int[rmin:rmax + 1, cmin:cmax + 1] = elevation[rmin:rmax+1, cmin:cmax+1]*cur_inpaint_mask + cur_elevation_int*~cur_inpaint_mask #Only modify the inpainted part!
 
     # Write the results
     if params.output_file:
