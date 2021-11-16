@@ -308,7 +308,7 @@ class InterpolateNetCDF4Reporter():
                 axes[1].set_axis_off()
                 plt.tight_layout()
             else:
-                axes[1].imshow(self.ds_interpolate_mask, cmap=plt.cm.gray)
+                axes[1].imshow(~self.ds_interpolate_mask, cmap=plt.cm.gray)
                 axes[1].set_title("Known (white) / Unknown (black) data")
                 axes[1].set_axis_off()
                 plt.tight_layout()
