@@ -234,9 +234,6 @@ def interpolate(params):
 
             cur_elevation[np.isnan(cur_elevation)] = 0 # Initializer, as well as boundary conditions when the areas to interpolate do not cover all the cells with unknown data
 
-            # else:
-            #     cur_inpaint_mask = ~mask_int
-            #     cur_elevation = elevation_int
             if params.verbose and params.areas:
                 condp.print("- Interpolating area {:d}/{:d}:".format(i+1, work_areas.shape[2]))
                 condp.print("    - Number of reference cells = {:d}".format(np.count_nonzero(cur_inpaint_mask)))
@@ -274,7 +271,8 @@ def interpolate(params):
 
             # "Paste" the results into the original elevation matrix
             # elevation_int[rmin:rmax+1, cmin:cmax+1] = cur_elevation_int
-            elevation_int[rmin:rmax + 1, cmin:cmax + 1] = elevation[rmin:rmax+1, cmin:cmax+1]*cur_inpaint_mask + cur_elevation_int*~cur_inpaint_mask #Only modify the inpainted part!
+            elevation_slice = elevation_int[rmin:rmax + 1, cmin:cmax + 1] # Do not copy! we want to refer to that part in elevation_int matrix
+            elevation_slice[~cur_inpaint_mask] = cur_elevation_int[~cur_inpaint_mask] # Only modify the inpainted part! (This way we preserve "unknown"/NaN values in areas we did not interpolate
 
     # Write the results
     if params.output_file:
