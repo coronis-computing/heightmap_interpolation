@@ -83,7 +83,7 @@ class InterpolateNetCDF4Reporter():
         self.ds_interpolation_flag_var = None
         self.ds_min_elevation = 0
         self.ds_max_elevation = 0
-        self.ds_use_areas = False
+        self.ds_areas = ""
         self.ds_work_areas = None
         # Data/info of the current test
         self.test_counter = 0
@@ -237,7 +237,7 @@ class InterpolateNetCDF4Reporter():
         self.ds_interpolate_mask = mask_int
         self.ds_reference_mask = mask_ref
         self.ds_elevation = elevation
-        self.ds_use_areas = True if ds_config["areas"] else False
+        self.ds_areas = ds_config["areas"]
         self.ds_work_areas = work_areas
 
         # Some other vars/statistics used by other sections
@@ -295,7 +295,7 @@ class InterpolateNetCDF4Reporter():
         axes[0].set_axis_off()
         divider = make_axes_locatable(axes[1])
         # cax = divider.append_axes('right', size='5%', pad=0.05)
-        if not self.ds_use_areas:
+        if not self.ds_areas:
             if not np.all(np.logical_or(self.ds_reference_mask, self.ds_interpolate_mask)):
                 rgb_interpolate_mask = cv2.cvtColor(np.asarray(self.ds_interpolate_mask, dtype="uint8") * 255,
                                                     cv2.COLOR_GRAY2RGB)
@@ -398,6 +398,9 @@ class InterpolateNetCDF4Reporter():
         if self.ds_interpolation_flag_var:
             args.append("--interpolation_flag_var")
             args.append(self.ds_interpolation_flag_var)
+        if self.ds_areas:
+            args.append("--areas")
+            args.append(self.ds_areas)
 
         # Always in verbose mode
         args.append("-v")
