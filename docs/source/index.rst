@@ -3,16 +3,18 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Heightmap Interpolation's documentation!
-===================================================
+Heightmap Interpolation package documentation
+=============================================
 
 .. toctree::
    :maxdepth: 3
    :caption: Contents:
 
    intro
+   installation
    usage
    methods
+   which_method
    modules/modules
    acknowledgements
 

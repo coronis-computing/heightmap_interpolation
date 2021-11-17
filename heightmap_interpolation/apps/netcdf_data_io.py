@@ -91,7 +91,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         df = gpd.read_file(areas_kml_file, driver='KML')
 
         # Create an array of work areas, each 3rd dimension plane represents a mask delimiting the working area
-        work_areas = np.full((elevation.shape[0], elevation.shape[1], len(df.geometry)), False)
+        work_areas = np.full((elevation.shape[0], elevation.shape[1], len(df.geometry[0].geoms)), False)
 
         # i = 0
         # for poly in df.geometry:
@@ -111,8 +111,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         yres = (ymax - ymin) / float(num_lat)
 
         i = 0
-        polys = list(df.geometry[0])
-        for poly in polys:
+        for poly in df.geometry[0].geoms:
             # Get the coordinates of the polygon
             x, y = poly.exterior.coords.xy
 
@@ -121,7 +120,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
             y = np.round((y - ymin) / yres).astype(np.int)
 
             poly_points_cv = np.zeros((len(x), 2))
-            for p in range(len(x)):
+            for p in range(len(x)):                                                                                                                                                                                                                                                                     
                 poly_points_cv[p, :] = np.array([x[p], y[p]])
             poly_points_cv = np.int32([poly_points_cv])  # Bug with fillPoly, needs explict cast to 32bit
 

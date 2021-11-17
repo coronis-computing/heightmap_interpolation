@@ -55,7 +55,7 @@ def add_common_fd_pde_inpainters_args(parser):
     parser.add_argument("--print_progress_iters", type=int, default=1000, help="If '--print_progress True', the optimization progress will be shown after this number of iterations")
     parser.add_argument("--mgs_levels", type=int, default=1, help="Levels of the Multi-grid solver. I.e., number of levels of detail used in the solving pyramid")
     parser.add_argument("--mgs_min_res", type=int, default=100, help="If during the construction of the pyramid of the Multi-Grid Solver one of the dimensions of the grid drops below this size, the pyramid construction will stop at that level")
-    parser.add_argument("--init_with", type=str, default="nearest", help="Initialize the unknown values to inpaint using a simple interpolation function. If using a MGS, this will be used with the lowest level on the pyramid. Available initializers: 'nearest' (default), 'linear', 'cubic', 'sobolev'")
+    parser.add_argument("--init_with", type=str, default="nearest", help="Initialize the unknown values to inpaint using a simple interpolation function. If using a MGS, this will be used with the lowest level on the pyramid. Available initializers: 'nearest' (default), 'linear', 'cubic', 'harmonic'")
     parser.add_argument("--convolver", type=str, default="opencv", help="The convolution method to use. Available: 'opencv' (default),'scipy-signal', 'scipy-ndimage', 'masked', 'masked-parallel'")
     parser.add_argument("--debug_dir", action="store", dest="debug_dir", default="", type=str, help="If set, debugging information will be stored in this directory (useful to visualize the inpainting progress)")
     return parser
@@ -340,28 +340,28 @@ def parse_args(args=None):
     parser_rbf = subparsers.add_parser("rbf", help="Radial Basis Function interpolant")
     parser_rbf.add_argument("--query_block_size", action="store", type=int, default=1000, help="Apply the interpolant using maximum this number of points at a time to avoid large memory consumption")
     parser_rbf.add_argument("--rbf_distance_type", action="store", type=str, default="euclidean",
-                        help="Distance type. Available: euclidean, haversine, vincenty(default)")
+                        help="Distance type. Available: euclidean (default), haversine, vincenty")
     parser_rbf.add_argument("--rbf_type", action="store", type=str, default="thinplate",
                         help="RBF type. Available: linear, cubic, quintic, gaussian, multiquadric, green, regularized, tension, thinplate, wendland")
     parser_rbf.add_argument("--rbf_epsilon", action="store", type=float, default=1,
                         help="Epsilon parameter of the RBF. Please check each RBF documentation for its meaning. Required just for the following RBF types: gaussian, multiquadric, regularized, tension, wendland")
     parser_rbf.add_argument("--rbf_regularization", action="store", type=float, default=0,
-                        help="Regularization scalar to use in the RBF (optional)")
+                        help="Regularization scalar to use while creating the RBF interpolant (optional)")
     parser_rbf.add_argument("--rbf_polynomial_degree", action="store", type=int, default=1,
                         help="Degree of the global polynomial fit used in the RBF formulation. Valid: -1 (no polynomial fit), 0 (constant), 1 (linear), 2 (quadric), 3 (cubic)")
 
     # Parser for the "pu-rbf" method
     parser_purbf = subparsers.add_parser("purbf", help="Partition of Unity Radial Basis Function interpolant")
     parser_purbf.add_argument("--query_block_size", action="store", type=int, default=1000, help="Apply the interpolant using maximum this number of points at a time to avoid large memory consumption")
-    parser_purbf.add_argument("--rbf_distance_type", action="store", type=str, default="euclidean", help="Distance type. Available: euclidean, haversine, vincenty(default)")
+    parser_purbf.add_argument("--rbf_distance_type", action="store", type=str, default="euclidean", help="Distance type. Available: euclidean (default), haversine, vincenty")
     parser_purbf.add_argument("--rbf_type", action="store", type=str, default="thinplate", help="RBF type. Available: linear, cubic, quintic, gaussian, multiquadric, green, regularized, tension, thinplate, wendland")
     parser_purbf.add_argument("--rbf_epsilon", action="store", type=float, default=1, help="Epsilon parameter of the RBF. Please check each RBF documentation for its meaning. Required just for the following RBF types: gaussian, multiquadric, regularized, tension, wendland")
-    parser_purbf.add_argument("--rbf_regularization", action="store", type=float, default=0, help="Regularization scalar to use in the RBF (optional)")
+    parser_purbf.add_argument("--rbf_regularization", action="store", type=float, default=0, help="Regularization scalar to use while creating the RBF interpolant (optional)")
     parser_purbf.add_argument("--rbf_polynomial_degree", action="store", type=int, default=1, help="Degree of the global polynomial fit used in the RBF formulation. Valid: -1 (no polynomial fit), 0 (constant), 1 (linear), 2 (quadric), 3 (cubic)")
-    parser_purbf.add_argument("--pu_overlap", action="store", type=float, default=0.25, help="(Just if PU is used) Overlap factor between circles in neighboring sub-domains in the partition. The radius of a QuadTree cell, computed as half its diagonal, is enlarged by this factor")
-    parser_purbf.add_argument("--pu_min_point_in_cell", action="store", type=int, default=1000, help="(Just if PU is used) Minimum number of points in a QuadTree cell")
-    parser_purbf.add_argument("--pu_min_cell_size_percent", action="store", type=float, default=0.005, help="(Just if PU is used) Minimum cell size, specified as a percentage [0..1] of the max(width, height) of the query domain")
-    parser_purbf.add_argument("--pu_overlap_increment", action="store", type=float, default=0.001, help="(Just if PU is used) If, after creating the QuadTree, a cell contains less than pu_min_point_in_cell, the radius will be iteratively incremented until this condition is satisfied. This parameter specifies how much the radius of a cell increments at each iteration")
+    parser_purbf.add_argument("--pu_overlap", action="store", type=float, default=0.25, help="Overlap factor between circles in neighboring sub-domains in the partition. The radius of a QuadTree cell, computed as half its diagonal, is enlarged by this factor")
+    parser_purbf.add_argument("--pu_min_point_in_cell", action="store", type=int, default=1000, help="Minimum number of points in a QuadTree cell")
+    parser_purbf.add_argument("--pu_min_cell_size_percent", action="store", type=float, default=0.005, help="Minimum cell size, specified as a percentage [0..1] of the max(width, height) of the query domain")
+    parser_purbf.add_argument("--pu_overlap_increment", action="store", type=float, default=0.001, help="If, after creating the QuadTree, a cell contains less than pu_min_point_in_cell, the radius will be iteratively incremented until this condition is satisfied. This parameter specifies how much the radius of a cell increments at each iteration")
 
     # Parser for the "harmonic" method
     parser_harmonic = subparsers.add_parser("harmonic", help="Harmonic inpainter")

@@ -19,9 +19,9 @@ The main script interpolating this input is ``interpolate_netcdf4.py``. It provi
 
 There are two sets of optional parameters to set: the ones regarding the input data and the ones regarding the specific interpolation method to use.
 
-First get the usage of this command by running it with the ``-h`` flag:
+First get the usage of this command by running it with the ``-h`` flag: ::
 
->>> interpolate_netcdf4.py -h
+    interpolate_netcdf4.py -h
 
 The result is the following: ::
 
@@ -74,4 +74,76 @@ The result is the following: ::
                             current steps of the process in the command line
       -s, --show            Show interpolation problem and results on screen
 
-As you can see, this first help shows the parameters regarding the input and output data (under ``optional arguments``) and the different interpolation methods available (under ``positional arguments``).
+As you can see, this first help shows the parameters regarding the input and output data (under ``optional arguments``) and the different interpolation methods available (under ``positional arguments``). The input file goes at the end of the command (i.e., the last positional parameter is interpreted as the input file).
+
+The parameters related to the input data are the following:
+
+* ``-o`` or ``--output_file``: the output NetCDF with the interpolated values. It will basically copy the input NetCDF file and modify its elevation variable (as well as the interpolation_flag accordingly, if available).
+* ``--areas``: a path to a KML file containing the areas where the interpolation will take place.
+* ``--elevation_var``: string ID within the NetCDF pointing to the elevation data grid to interpolate.
+* ``--interpolation_flag_var``: string ID within the NetCDF pointing to the ``interpolation_flag`` variable. If specified, it will use this variable in the NetCDF as an indicator of where to interpolate (will just interpolate areas where interpolation_flag = 1).
+Otherwise, it will interpolate "invalid" values within the elevation variable.
+* ``-v`` or ``--verbose``: flag to activate verbose output during execution.
+* ``-s`` or ``--show``: flag to show the interpolation result on screen after a successful execution.
+
+**Important note:** interpolation at areas contained in the KML file pointed by ``--areas`` will just solve the inpainting using both reference and missing data within those areas. That is, **only** the reference points falling within the area will contribute to the interpolation of the missing data. In other words: do not just mark the "holes" in your data, but also mark the "data you want to use to interpolate the hole".
+
+The parameters specific for each method will appear if you call the function with the ``positional_argument`` and the ``-h`` flag. E.g.: ::
+
+    $ interpolate_netcdf4.py harmonic -h
+    usage: interpolate_netcdf4.py harmonic [-h]
+                                           [--update_step_size UPDATE_STEP_SIZE]
+                                           [--rel_change_tolerance REL_CHANGE_TOLERANCE]
+                                           [--rel_change_iters REL_CHANGE_ITERS]
+                                           [--max_iters MAX_ITERS]
+                                           [--relaxation RELAXATION]
+                                           [--print_progress_iters PRINT_PROGRESS_ITERS]
+                                           [--mgs_levels MGS_LEVELS]
+                                           [--mgs_min_res MGS_MIN_RES]
+                                           [--init_with INIT_WITH]
+                                           [--convolver CONVOLVER]
+                                           [--debug_dir DEBUG_DIR]
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --update_step_size UPDATE_STEP_SIZE
+                            Update step size
+      --rel_change_tolerance REL_CHANGE_TOLERANCE
+                            If the relative change between the inpainted
+                            elevations in the current and a previous step is
+                            smaller than this value, the optimization will stop
+      --rel_change_iters REL_CHANGE_ITERS
+                            Number of iterations in the optimization after which
+                            we will check if the relative tolerance is below the
+                            threshold
+      --max_iters MAX_ITERS
+                            Maximum number of iterations in the optimization.
+      --relaxation RELAXATION
+                            Set to >1 to perform over-relaxation at each iteration
+      --print_progress_iters PRINT_PROGRESS_ITERS
+                            If '--print_progress True', the optimization progress
+                            will be shown after this number of iterations
+      --mgs_levels MGS_LEVELS
+                            Levels of the Multi-grid solver. I.e., number of
+                            levels of detail used in the solving pyramid
+      --mgs_min_res MGS_MIN_RES
+                            If during the construction of the pyramid of the
+                            Multi-Grid Solver one of the dimensions of the grid
+                            drops below this size, the pyramid construction will
+                            stop at that level
+      --init_with INIT_WITH
+                            Initialize the unknown values to inpaint using a
+                            simple interpolation function. If using a MGS, this
+                            will be used with the lowest level on the pyramid.
+                            Available initializers: 'nearest' (default), 'linear',
+                            'cubic', 'sobolev'
+      --convolver CONVOLVER
+                            The convolution method to use. Available: 'opencv'
+                            (default),'scipy-signal', 'scipy-ndimage', 'masked',
+                            'masked-parallel'
+      --debug_dir DEBUG_DIR
+                            If set, debugging information will be stored in this
+                            directory (useful to visualize the inpainting
+                            progress)
+
+The different options and their meaning of each specific method will be listed in the corresponding section at :ref:`methods`.

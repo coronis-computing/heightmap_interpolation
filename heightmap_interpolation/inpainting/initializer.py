@@ -32,7 +32,7 @@ class Initializer():
             # Use griddata to interpolate
             interp = interpolate.griddata((x1, y1), ref.ravel(), (xx, yy), method=self.init_with.lower(), fill_value=fill_value)
             image[~mask] = interp[~mask]
-        elif self.init_with.lower() == "sobolev":
+        elif self.init_with.lower() == "sobolev" or self.init_with.lower() == "harmonic":
             params_dict = {"update_step_size": 0.8/4,
                            "rel_change_tolerance": 1e-5,
                            "max_iters": 1e5}

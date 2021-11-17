@@ -31,17 +31,41 @@ from heightmap_interpolation.inpainting.update_at_mask import update_at_mask
 
 
 class FDPDEInpainter(ABC):
-    """ Abstract base class for Finite-Differences Partial Differential Equation (FDPDE) Inpainters
-        Common interphase for PDE-based inpainting methods. Solves the problem using finite differences
+    """Abstract base class for Finite-Differences Partial Differential Equation (FDPDE) Inpainters
+
+        Common interphase for PDE-based inpainting methods. Solves the problem using finite differences in a gradient-descent manner.
 
         Attributes:
-            relChangeTolerance: Relative tolerance, stop the gradient descent when the energy descent between iterations is less than this value
-            maxIters: Maximum number of gradient descent iterations to perform
-            dt: Gradient descent step size
-            relax: Over-relaxation parameter
+            dt (float): Gradient descent step size.
+            rel_change_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
+            rel_change_tolerance (float): Stop the optimization when the energy descent between iterations is less than
+            max_iters (int): Maximum number of iterations for the optimizer.
+            relaxation (float): Over-relaxation parameter. It is still under testing, use with care.
+            mgs_levels (int): Number of levels of detail to use in the Mult-Grid Solver (MGS). Setting it to 1 deactivates the MGS.
+            mgs_min_res (int): minimum resolution (width or height) allowed for a level in the MGS. If the level of detail in the pyramid gets to a value lower than this, the pyramid construction will stop.
+            print_progress (bool): Print information about the progress of the optimization on screen.
+            print_progress_iters (int): If print_progress==True, the information will be printed every this number of iterations.
+            init_with (str): initializer for the unknown data before applying the optimization.
+            convolver_type (str): the convolver used for all the convolutions required by the solver.
+            debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
         """
     def __init__(self, **kwargs):
-        """ Constructor """
+        """Constructor
+
+        Keyword Args:
+            dt (float): Gradient descent step size.
+            rel_change_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
+            rel_change_tolerance (float): Stop the optimization when the energy descent between iterations is less than
+            max_iters (int): Maximum number of iterations for the optimizer.
+            relaxation (float): Over-relaxation parameter. It is still under testing, use with care.
+            mgs_levels (int): Number of levels of detail to use in the Mult-Grid Solver (MGS). Setting it to 1 deactivates the MGS.
+            mgs_min_res (int): minimum resolution (width or height) allowed for a level in the MGS. If the level of detail in the pyramid gets to a value lower than this, the pyramid construction will stop.
+            print_progress (bool): Print information about the progress of the optimization on screen.
+            print_progress_iters (int): If print_progress==True, the information will be printed every this number of iterations.
+            init_with (str): initializer for the unknown data before applying the optimization.
+            convolver_type (str): the convolver used for all the convolutions required by the solver.
+            debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
+        """
         super().__init__()
         # --- Gather and check the input parameters ---
         self.dt = kwargs.pop("update_step_size", 0.01)
@@ -106,7 +130,7 @@ class FDPDEInpainter(ABC):
         return config
 
     def inpaint(self, image, mask):
-        # Inpainting of an "image" by iterative minimization of a PDE functional
+        # Inpainting of an "image" by iterative minimization of a PDE functional.
         #
         # Input:
         #   img: input image to be inpainted
@@ -133,7 +157,8 @@ class FDPDEInpainter(ABC):
         return inpainted
 
     def inpaint_multigrid(self, image, mask):
-        """Multigrid solver for inpainting problems
+        """Multigrid solver for inpainting problems.
+
         Args:
             img: input image to be inpainted
             mask: logical mask of the same size as the input image.
