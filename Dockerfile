@@ -27,4 +27,10 @@ ENV PATH=$PATH:/usr/local/src/heightmap_interpolation/heightmap_interpolation/ap
 # And also the reporter
 ENV PATH=$PATH:/usr/local/src/heightmap_interpolation/heightmap_interpolation/reporter
 
+# Solve matplotlib complain about not finding writable /.cache/matplotlib and /.config/matplotlib folders
+RUN mkdir -p /.cache/matplotlib
+RUN mkdir -p /.config/matplotlib
+RUN chmod -R 777 /.cache/matplotlib
+RUN chmod -R 777 /.config/matplotlib
+
 CMD ["bash"]
