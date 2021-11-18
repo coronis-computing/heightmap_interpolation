@@ -1,7 +1,7 @@
 Usage
 =====
 
-You can use the modules in this package directly within your code (see :ref: `Python Packages and Modules`).
+Once installed, all the methods in this package can be used in your Python projects as in any other package (see the docs of :mod:`heightmap_interpolation`).
 
 However, since this toolbox was developed within the `EMODnet Bathymetry <https://www.emodnet-bathymetry.eu/>`_ (High Resolution Seabed Mapping) project, we also provide a python script that accepts NetCDF4 files following the specifications of the EMODnet Bathymetry project.
 More precisely, we expect a NetCDF4 file describing an elevation map in Geodetic (WGS84) coordinates. While the original format includes several other fields, in this project we just expect the file to contain the following variables:
@@ -81,14 +81,13 @@ The parameters related to the input data are the following:
 * ``-o`` or ``--output_file``: the output NetCDF with the interpolated values. It will basically copy the input NetCDF file and modify its elevation variable (as well as the interpolation_flag accordingly, if available).
 * ``--areas``: a path to a KML file containing the areas where the interpolation will take place.
 * ``--elevation_var``: string ID within the NetCDF pointing to the elevation data grid to interpolate.
-* ``--interpolation_flag_var``: string ID within the NetCDF pointing to the ``interpolation_flag`` variable. If specified, it will use this variable in the NetCDF as an indicator of where to interpolate (will just interpolate areas where interpolation_flag = 1).
-Otherwise, it will interpolate "invalid" values within the elevation variable.
+* ``--interpolation_flag_var``: string ID within the NetCDF pointing to the ``interpolation_flag`` variable. If specified, it will use this variable in the NetCDF as an indicator of where to interpolate (will just interpolate areas where interpolation_flag = 1). Otherwise, it will interpolate "invalid" values within the elevation variable.
 * ``-v`` or ``--verbose``: flag to activate verbose output during execution.
 * ``-s`` or ``--show``: flag to show the interpolation result on screen after a successful execution.
 
-**Important note:** interpolation at areas contained in the KML file pointed by ``--areas`` will just solve the inpainting using both reference and missing data within those areas. That is, **only** the reference points falling within the area will contribute to the interpolation of the missing data. In other words: do not just mark the "holes" in your data, but also mark the "data you want to use to interpolate the hole".
+**Important note:** interpolation at areas contained in the KML file pointed by ``--areas`` will just solve the inpainting using both reference and missing data within those areas. That is, **only** the reference points falling within the area will contribute to the interpolation of the missing data. In other words: do not just mark the "holes" in your data, but also mark the "data you want to use to interpolate those holes".
 
-The parameters specific for each method will appear if you call the function with the ``positional_argument`` and the ``-h`` flag. E.g.: ::
+The parameters specific to each method will appear if you call the function with the ``positional_argument`` and the ``-h`` flag. E.g.: ::
 
     $ interpolate_netcdf4.py harmonic -h
     usage: interpolate_netcdf4.py harmonic [-h]
@@ -146,4 +145,4 @@ The parameters specific for each method will appear if you call the function wit
                             directory (useful to visualize the inpainting
                             progress)
 
-The different options and their meaning of each specific method will be listed in the corresponding section at :ref:`methods`.
+The different options and their meaning for each specific method will be listed in the corresponding section at :ref:`methods`.

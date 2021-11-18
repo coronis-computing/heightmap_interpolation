@@ -24,7 +24,7 @@ providing **higher-degree** approximations **faster** than some similar approach
 and require **much less memory** to execute (the solver we implement just applies convolution operations on the input grid).
 
 In the following sections, for each of the methods in the package, we will briefly describe their behaviour,
-list the parameters available to tune in each case, provide the data/cases for which a given method is more suitable,
+list the parameters available to tune in each case, provide the cases for which a given method is more suitable,
 and list their pros/cons.
 
 In addition, in order to get a qualitative evaluation of the behaviour of each method, we will run them with default
@@ -36,7 +36,7 @@ parameters on the following dataset:
 
     Example dataset. Colored areas and points represent the known reference elevation data, while the area to interpolate is shown in white. Data by courtesy of the Swedish Maritime Administration
 
-Note that this dataset mixes both a scattered and densely-sampled reference data.
+Note that this dataset mixes both scattered and densely-sampled reference data.
 
 
 .. _scattered_methods:
@@ -88,7 +88,7 @@ Linear
 
     Example dataset interpolated using the Linear interpolant (*linear* option in ``interpolate_netcdf4.py``).
 
-Creates a linear interpolant by creating a 2D Delaunay triangulation using the reference data points.
+Computes a linear interpolant by creating a 2D Delaunay triangulation using the reference data points.
 Upon a given query point, it searches in which of the triangle in the XY plane it falls, and computes a barycentric interpolation of the elevation using the reference values at the vertices of the triangle.
 
 This method is just an interphase for the `scipy.interpolate.LinearNDInterpolator <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.LinearNDInterpolator.html>`_.
@@ -107,10 +107,13 @@ Suitable for
 Advantages
 ++++++++++
 
-* Provides a smoother interpolation than the *linear* method at a similar computational cost.
+* Fast classical interpolation method applicable to large areas.
 
 Disadvantages
 +++++++++++++
+
+* May produce artifacts if samples' density vary rapidly, or if the scattered samples are not uniformly distributed over the inpainting area (see figure above).
+* Does not "extrapolate" in query locations outside of the convex hull of the reference data.
 
 Cubic
 -----
@@ -148,7 +151,7 @@ Advantages
 Disadvantages
 +++++++++++++
 
-* May produce artifacts if samples' density vary rapidly, or if the scattered samples are not uniformly distributed over the inpainting area.
+* May produce artifacts if samples' density vary rapidly, or if the scattered samples are not uniformly distributed over the inpainting area (see figure above).
 * Does not "extrapolate" in query locations outside of the convex hull of the reference data.
 
 .. _rbf_interpolant:
@@ -156,18 +159,18 @@ Disadvantages
 Radial Basis Functions
 ----------------------
 
-A Radial Basis Funcion (RBF) is a function whose value depends only on the distance between the input and some fixed point. The basic idea of a RBF interpolator is to construct an interpolant of the data using a summation of several RBF centered at the input data points. The formal definition is the following:
+A Radial Basis Funcion (RBF) is a function whose value depends only on the distance between the input and some fixed point. The basic idea of a RBF interpolator is to construct an interpolant of the data using a summation of several RBF centered at the input reference data points. The formal definition is the following:
 
 .. math:: s(x) = p(x) + \sum^{N}_{i=1} \lambda_i \phi(|x-x_i|)
 
-Where :math:`\phi(|x-x_i|)` is a given radial basis function :math:`\phi` centered at a known/reference data point :math:`x_i`, :math:`p(x)` is a polynomial of small degree, evaluated at point :math:`x`, and :math:`\lambda_i` is a scalar weight.
+Where :math:`\phi(|x-x_i|)` is a given radial basis function :math:`\phi` centered at a known/reference data point :math:`x_i`, :math:`p(x)` is a polynomial of small degree evaluated at point :math:`x`, and :math:`\lambda_i` is a scalar weight.
 
 Thus, basically, we have a polynomial (1st term) capturing the main trend of the data, and the summation of weighted RBFs (2nd term).
 Therefore, the unknowns of this interpolant are mainly the few terms of the polynomial :math:`p(x)` and the :math:`\lambda_i` weight of each RBF. These unknowns can be solved using a linear system of equations. In matrix form, this corresponds to:
 
 .. math::
     A = \left( \begin{matrix}
-                A & P & \\
+                A & P \\
                 P^T & 0
             \end{matrix}
         \right)
@@ -193,7 +196,7 @@ While solving this system of equations is conceptually simple, it is important t
 matrix with side length equal to the number of input data points.
 Therefore, this formulation becomes prohibitively complex for large datasets, as the amount of memory and computational
 resources required for solving and/or evaluating the interpolant is too large. This is the reason why there is no figure
-showing the result in this section, even for a small dataset as the one we are using, **it is not feasible to compute the
+showing the result in this section: even for a small dataset as the one we are using, **it is not feasible to compute the
 interpolant in a reasonable amount of time and resources**.
 
 However, it has the nice feature of allowing some "tunning" of the properties of the interpolating surface via the RBF type that we choose.
@@ -212,7 +215,7 @@ The RBF types available in this package are listed in the following. Note that s
 
 * Other:
     * tension spline: :math:`\phi(r) = -\frac{1}{2 \pi \epsilon^2}(log(\frac{r\epsilon}{2} + C_e + K_0(r\epsilon))`, being :math:`C_e` the Euler constant and :math:`K_0` the modified Bessel function (same as in [MITAS1988]_, equation 50).
-    * regularized spline: :math:`\phi(r) = \frac{1}{s\pi} \left{ \frac{r^4}/4 \left[ log(\frac{r}{2\pi} + C_e - 1 \right] + \epsilon^2 \left[K_0(\frac{r}{\epsilon}) + C_e + log(\frac{r}{2\pi}) \right] \right)` (same as in [MITAS1988]_, equation 56).
+    * regularized spline: :math:`\phi(r) = \frac{1}{s\pi} \left( \frac{r^4}{4} \left[ log(\frac{r}{2\pi}) + C_e - 1 \right] + \epsilon^2 \left[K_0(\frac{r}{\epsilon}) + C_e + log(\frac{r}{2\pi}) \right] \right)` (same as in [MITAS1988]_, equation 56).
 
 .. [MITAS1988] Mitas, L., and H. Mitasova. 1988. General Variational Approach to the Interpolation Problem. Comput. Math. Applic. Vol. 16. No. 12. pp. 983–992. Great Britain.
 
@@ -229,13 +232,13 @@ Parameters
 Suitable for
 ++++++++++++
 
-* Best fidelity for the interpolant.
+* Best approximation quality for the interpolant.
 * Small datasets. They can be small in the number of input reference points, and large in the number of query points (huge scattered data).
 
 Advantages
 ++++++++++
 
-* Allows tuning the properties of the interpolating surface by changing the RBF type.
+* Allows tuning the properties of the interpolating surface by changing the RBF type and :math:`\epsilon` parameter.
 
 Disadvantages
 +++++++++++++
@@ -269,7 +272,7 @@ More precisely, we enforce a quadtree decomposition. In the following figure we 
 
 Each cell in the quadtree define a local RBF interpolant and its area of influence. Note how the different areas overlap
 between them (a condition for continuity) and how the area of influence of each local interpolant adapts to the complexity of the data
-(larger regions in more sparse areas, and smaller regions in denser ones). Finally, since the extend of local RBF is limited,
+(larger regions in more sparse areas, and smaller regions in denser ones). Finally, since the extent of local RBF is limited,
 we also ensure that at least one local interpolant covers all the data within the possible query space (i.e., it covers the extent of the input grid).
 
 The PU interpolant preserves the local approximation order for the global fit. Therefore, large RBF interpolants can be
@@ -292,6 +295,8 @@ Parameters
 Suitable for
 ++++++++++++
 
+* Datasets for which the basic RBF interpolator required too much memory and computational resources.
+
 Advantages
 ++++++++++
 
@@ -310,20 +315,19 @@ PDE-based Inpainting Interpolators
 
 Our heightmaps are bivariate functions of the form :math:`u(x, y) = z`, where x/y are the coordinates in a plane and z the corresponding elevation value.
 
-A simple way of defining the is to define the properties that the "interpolating surface" :math:`f(u)` must satisfy at interpolated areas using Partial Differential Equations (PDEs).
+A simple way of defining the interpolant is to define the properties that the "interpolating surface" :math:`f(u)` must satisfy at interpolated areas using Partial Differential Equations (PDEs).
 
 Once defined a given PDE, we can solve it using finite differences in a gradient-descent manner, where:
 
 .. math::
     f(u)_{t+1} = u_t - \phi*\nabla(f(u_t))
 
-Being the subindex :math:`t` the iteration index, :math:`\nabla(f(u_t))` the PDE or the *gradient* that we need to follow, \phi the size of the update at each iteration. Given a properly small :math:`\phi`, we can iterate the equation above to *steady state* (i.e., no change) in order to solve for the functional.
+Being the subindex :math:`t` the iteration index, :math:`\nabla(f(u_t))` the PDE or the *gradient* that we need to follow, \phi the size of the update step at each iteration. Given a properly small :math:`\phi`, we can iterate the equation above to *steady state* (i.e., no change) in order to solve for the functional.
 
-Using discretized differential stencils, we can work directly on the input cell grid, and evolve the previous equation using just convolutions for the  part.
+Using discretized differential stencils, we can work directly on the input cell grid, and evolve the previous equation using just convolutions.
 
-We implement all the methods in this section using the same PDE solver. Therefore, there is a set of parameters that are common to all the methods.
-
-Before listing them, we explain some of the speed-up tricks that we use to accelerate the classical gradient descent optimization.
+We implement all the methods in this section using the same PDE solver. Therefore, there is a set of parameters that are common to all the methods (see :ref:`common_pde_inpainting_parameters`).
+Before listing them, we explain in the next sections some of the speed-up tricks that we use to accelerate the classical gradient descent optimization.
 
 Speed-Up Tricks
 ---------------
@@ -352,15 +356,22 @@ The initializers available are:
 Multi-Grid Solver
 +++++++++++++++++
 
-Instead of solving the optimization problem at the full resolution grid directly, we do it in a multi-resolution way.
+By setting the proper parameters, the ``interpolate_netcdf4.py`` function will use a Multi-Grid Solver (MGS). Basically, instead of solving the optimization problem at the full resolution grid directly, it will do it in a multi-resolution way.
 
-We start building a pyramid of different levels of resolution from the original grid, where each level of the pyramid contains a halved resolution version of the previous one.
+The MGS starts building a pyramid of different levels of resolution from the original grid, where each level of the pyramid contains a halved resolution version of the previous one:
+
+.. figure:: images/mgs_pyramid.png
+    :width: 300
+    :align: center
+
+    Schematic of the multi-resolution pyramid created by the Multi-Grid Solver. The original grid (bottom of the pyramid) is halved in resolution recursively to get lower resolution versions of the problem. Then, starting from the top of the pyramid, the inpainting problem is solved in a lower resolution version, and upscaled and propagated to the next (higher resolution) level of the pyramid as initial guess.
+
 Then, starting from the coarser level, we solve the inpainting problem there, and use that solution to initialize the solver in the next (higher resolution) level of the pyramid.
 
 Therefore, we use upscaled versions of the problem solved at coarser resolutions to initialize the inpainting problem at higher resolutions.
 In this way, the initial values of the optimization at each level of the pyramid are closer to the final solution, decreasing like this the number of iterations required for convergence.
 
-Note that the *initializer* parameter in this case will just affect the initialization of the lowest-resolution level of the pyramid.
+Note that, when using the MGS, the ``--init_with`` parameter (corresponding to the :ref:`inpainting_initializer`) will just affect the initialization of the lowest-resolution level of the pyramid.
 
 .. _common_pde_inpainting_parameters:
 
@@ -371,7 +382,7 @@ The parameters that are common to all PDE-based interpolators affect the behavio
 
 * ``--update_step_size`` (float): gradient descent step size. A default is provided by each method. However, depending on the problem, you could tune it to a higher value to speed-up convergence (but beware of overshooting and missing the minimum!).
 * ``--rel_change_tolerance`` (float): stop the optimization when the energy descent between iterations is less than this value.
-* ``--rel_change_iters`` (int): since checking for the termination criteria of `--rel_change_tolerance` is costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
+* ``--rel_change_iters`` (int): since checking for the termination criteria of ``--rel_change_tolerance`` is costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
 * ``--max_iters`` (int): maximum number of iterations for the optimizer (will end the optimization even if there is no convergence on the minimization).
 * ``--relaxation`` (float): over-relaxation parameter. *This paramter  is still under testing, use with care*.
 * ``--mgs_levels`` (int): number of levels of detail to use in the Mult-Grid Solver (MGS, see :ref:`inpainting_mgs`). Setting it to 1 deactivates the MGS.
@@ -400,7 +411,7 @@ An harmonic surface is a twice differentiable function satisfying the Laplace eq
 
 This method has many analogies:
 
-* It can be seen as an `isotropic diffusion `_ of the elevation values at the borders surrounding the missing data towards the area to interpolate.
+* It can be seen as an "isotropic diffusion" of the elevation values at the borders surrounding the missing data towards the area to interpolate.
 * Its evolution follows the `heat diffusion equation <https://en.wikipedia.org/wiki/Heat_equation>`_.
 * It minimizes the Sobolev norm on the grid, constrained to the input reference data.
 * The interpolated surface is a "minimum energy surface", and many times it is described as the "shape a film of soap would take if layed over the data points".
@@ -445,7 +456,7 @@ Where:
 .. math::
     N_{\epsilon}(u) = \frac{u}{\sqrt{\left\| u \right\|^2 + \epsilon^2}}
 
-Intuitively, it tends to preserve/continue high gradients better than , since the evolution of the optimizer can be considered a type of
+Intuitively, it tends to preserve/continue high gradients better than *harmonic*, since the evolution of the optimizer can be considered a type of
 `anisotropic diffusion <https://en.wikipedia.org/wiki/Anisotropic_diffusion>`_.
 
 However, it will not take into account isolated points, and should only be used for filling gaps with no data fully surrounded with reference data.
@@ -455,12 +466,12 @@ Parameters
 
 In addition to the common inpainter parameters defined in :ref:`common_pde_inpainting_parameters`, this method has the following specific parameters:
 
-* ``--epsilon``: the :math:`\epsilon` parameter in the formula above. It is just a small value used in the normalization factor :math:`N_epsilon(u)` so that the denominator is never zero.
+* ``--epsilon``: the :math:`\epsilon` parameter in the formula above. It is just a small value used in the normalization factor :math:`N_{epsilon}(u)` so that the denominator is never zero.
 
 Suitable for
 ++++++++++++
 
-* Filling continous gaps of data (i.e., not suitable for scattered data interpolation!).
+* Filling continous gaps of data (i.e., not suitable for scattered data interpolation).
 
 Advantages
 ++++++++++
@@ -481,7 +492,7 @@ Continous Curvature Splines in Tension (CCST) Inpainter
 
     Example dataset interpolated using the Continous Curvature Splines in Tension inpainter (*ccst* option in ``interpolate_netcdf4.py``).
 
-The PDE guiding this interpolant is the following:
+Implements the method in [Smith90]_. The PDE guiding this interpolant is the following:
 
 .. math::
     \nabla(f(u_t)) = (1-t)\nabla^4 u_t - t \nabla^2 u_t = 0
@@ -490,11 +501,11 @@ The PDE guiding this interpolant is the following:
 If we take a look to equation :eq:`eq_ccst`, we will identify that :math:`\nabla^2 u_t` is the harmonic equation (same as in :ref:`harmonic_inpainter`).
 Also, in the other term, we find :math:`\nabla^4 u_t = \nabla^2\nabla^2 u_t`, the "harmonic of the harmonic", that is, the biharmonic surface. And, in both terms, they are affected by a constant :math:`t`.
 
-The *tension* parameter allows tuning the influence of an harmonic and a biharmonic surface in the final result. Therefore:
+The *tension* parameter :math:`t` allows tuning the influence of an harmonic and a biharmonic surface in the final result. Therefore:
 
 * :math:`t = 0` equals a biharmonic surface.
-* :math:`t = 0` equals an harmonic surface (same result as in :ref:`harmonic_inpainter`!).
-* And a value of :math:`t` between 0 and 1 is a mixture of both.
+* :math:`t = 1` equals an harmonic surface (same result as in :ref:`harmonic_inpainter`!).
+* A value of :math:`t` between 0 and 1 is a mixture of both harmonic/biharmonic interpolants.
 
 In a nutshell, if we chop off the peak of a mountain at a given altitude, and we try to interpolate it using this method,
 :math:`t=0` would probably reconstruct the peak of the mountain (note that this means that it will **overshoot** the input data),
@@ -526,7 +537,7 @@ Disadvantages
 +++++++++++++
 
 * Slower execution time than other inpainters.
-* Depending on the
+* Depending on the parameters, it may overshoot the data.
 
 Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
 ----------------------------------------------------------
@@ -537,7 +548,15 @@ Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
 
     Example dataset interpolated using the Absolutely Minimizing Lipschitz Extension inpainter (*amle* option in ``interpolate_netcdf4.py``).
 
-Implements the method in [Almansa02]_, please refer to the original article for more details.
+Implements the method in [Almansa02]_. Following the notation of the original reference, The PDE guiding this interpolant is the following:
+
+.. math::
+    \nabla(f(u_t)) = D^2u_t \left( \frac{Du_t}{|Du_t|}, \frac{Du_t}{|Du_t|} \right)
+
+Where :math:`Du` denotes the gradient of :math:`u`.
+
+The main effort of the AMLE model is to "avoid oscillations", i.e., avoid the interpolated elevation to overshoot the reference values (min and max elevation value do not change).
+Also, it handles "isolated points" in the reference data.
 
 .. [Almansa02] Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
             Interpolation of Digital Elevation Models Using AMLE and Related
@@ -552,24 +571,32 @@ This inpainter only depends on the common parameters defined in :ref:`common_pde
 Suitable for
 ++++++++++++
 
-Interpolating gaps in terrain data using a better interpolant, but trying not to overshoot the original data.
+* Interpolating gaps in terrain data using a better interpolant, but trying not to overshoot the original data.
+* Scattered data: this is the only approach that always takes into account scattered data properly (*ccst* with a tension apoaching 1 also does, but not so well if tension approaches 0...).
 
 Advantages
 ++++++++++
 
 * It is the only inpainter method in this package that was originally devised for interpolating heightmaps without overshooting the data.
+* Contribution of isolated points is properly propagated within the area to interpolate.
 
 Disadvantages
 +++++++++++++
 
 * Slower execution time than other inpainters.
+* Contrary to the other inpainters, for which the default values of ``--update_step_size`` parameter should work in any condition,
+there might be cases where the default ``--update_step_size`` may lead to no convergence. If you see that the solver does not converge for your data
+(it gets to the maximum number of iterations set in ``--max_iters`` parameter), try lowering it a bit an re-execute.
 
+
+.. _other_inpainters:
 
 Other Inpainters
 ****************
 
 Since one of the dependencies we use is `OpenCV <https://opencv.org/>`_, and this library has some inpainting methods already implemented,
-we created interphases for using them on our heightmap interpolation problem.
+we created interphases for using them on our heightmap interpolation problem. Note that these methods are typically used
+for closing small, thin gaps, as the ones you can see in the examples of the `OpenCV documentation <https://opencv24-python-tutorials.readthedocs.io/en/latest/py_tutorials/py_photo/py_inpainting/py_inpainting.html>`_.
 
 OpenCV's Telea
 --------------
@@ -590,7 +617,7 @@ Only the ``--radius`` integer parameter, corresponding to the one with the same 
 Suitable for
 ++++++++++++
 
-Interpolating "thin" continuous missing data parts fast.
+* Interpolating "thin" continuous missing data parts fast.
 
 Advantages
 ++++++++++
@@ -621,7 +648,7 @@ Only the ``--radius`` integer parameter, corresponding to the one with the same 
 Suitable for
 ++++++++++++
 
-Interpolating "thin" continuous missing data parts fast.
+* Interpolating "thin" continuous missing data parts fast.
 
 Advantages
 ++++++++++
