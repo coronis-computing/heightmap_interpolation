@@ -2,6 +2,8 @@
 
 Interpolation functions for heightmaps developed within the EMODnet Bathymetry (High Resolution Seabed Mapping) project.
 
+Please visit the documentation at: https://emodnet-heightmap-interpolation.readthedocs.io/en/latest/
+
 ## Installation
 
 This package and all its requirements can be installed through `setuptools` using:

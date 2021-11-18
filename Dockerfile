@@ -20,6 +20,7 @@ COPY setup.py /usr/local/src/heightmap_interpolation/setup.py
 
 # Install the requirements and the package itself
 WORKDIR /usr/local/src/heightmap_interpolation
+RUN pip install --upgrade pip
 RUN python setup.py install
 
 # Put the dir containing the main "interpolate_netcdf4.py" in the path for convenience

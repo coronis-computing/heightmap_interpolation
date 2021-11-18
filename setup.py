@@ -42,6 +42,7 @@ setuptools.setup(
             'opencv-contrib-python==4.5.3.56',
             'numba==0.54.1',
             'psutil==5.8.0',
+            'pyproj==3.2.0'
       ],
       python_requires='>=3.7',
       )
