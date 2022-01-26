@@ -90,8 +90,18 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         # Read the KML file using geopandas
         df = gpd.read_file(areas_kml_file, driver='KML')
 
+        # Collect all polygons
+        polys = []
+        types = df.geom_type
+        for ind in range(len(types)):
+            type = types[ind]
+            if type == 'Polygon':
+                polys.append(df.geometry[ind])
+            elif type == 'MultiPolygon':
+                polys.extend(df.geometry[ind].geoms)
+
         # Create an array of work areas, each 3rd dimension plane represents a mask delimiting the working area
-        work_areas = np.full((elevation.shape[0], elevation.shape[1], len(df.geometry[0].geoms)), False)
+        work_areas = np.full((elevation.shape[0], elevation.shape[1], len(polys)), False)
 
         # i = 0
         # for poly in df.geometry:
@@ -111,7 +121,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         yres = (ymax - ymin) / float(num_lat)
 
         i = 0
-        for poly in df.geometry[0].geoms:
+        for poly in polys:
             # Get the coordinates of the polygon
             x, y = poly.exterior.coords.xy
 
@@ -130,6 +140,10 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
             cv2.fillPoly(area_mask, poly_points_cv, color, lineType=cv2.LINE_AA)
 
             work_areas[:, :, i] = area_mask > 0
+
+            # Sanity check
+            if not np.any(work_areas[:, :, i]):
+                raise ValueError("One of the polygon areas of the KML does not contain any point within the map!")
 
             i = i+1
 
