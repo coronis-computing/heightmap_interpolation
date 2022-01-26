@@ -37,6 +37,7 @@ setuptools.setup(
             'scipy==1.7.1',
             'netCDF4==1.5.7',
             'geopy==2.2.0',
+            'pandas==1.3.2',
             'geopandas==0.9.0',
             'opencv-python==4.5.3.56',
             'opencv-contrib-python==4.5.3.56',
