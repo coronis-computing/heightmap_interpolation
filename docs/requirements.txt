@@ -31,7 +31,7 @@ mpmath==1.2.1
 munch==2.5.1.dev12
 netCDF4==1.5.7
 numba==0.54.1
-numpy==1.20.3
+numpy==1.21.0
 opencv-contrib-python==4.5.3.56
 opencv-python==4.5.3.56
 osqp==0.6.2.post0
