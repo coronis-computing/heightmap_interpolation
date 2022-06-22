@@ -32,7 +32,7 @@ setuptools.setup(
       install_requires=[
             'packaging==21.0',
             'matplotlib==3.5.0b1',
-            'numpy==1.20.3',
+            'numpy==1.22.0',
             'haversine==2.5.1',
             'scipy==1.7.1',
             'netCDF4==1.5.7',
