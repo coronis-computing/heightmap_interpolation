@@ -20,30 +20,5 @@
 
 import setuptools
 
-setuptools.setup(
-      name='Heightmap Interpolation',
-      version='1.0',
-      description='EMODnet Bathymetry Heightmap Interpolation Package',
-      author='Ricard Campos',
-      author_email='ricard.campos@coronis.es',
-      url='',
-      packages=setuptools.find_packages(),
-      include_package_data=True,
-      install_requires=[
-            'packaging==21.0',
-            'matplotlib==3.5.0b1',
-            'numpy==1.20.3',
-            'haversine==2.5.1',
-            'scipy==1.7.1',
-            'netCDF4==1.5.7',
-            'geopy==2.2.0',
-            'pandas==1.3.2',
-            'geopandas==0.9.0',
-            'opencv-python==4.5.3.56',
-            'opencv-contrib-python==4.5.3.56',
-            'numba==0.54.1',
-            'psutil==5.8.0',
-            'pyproj==3.2.0'
-      ],
-      python_requires='>=3.7',
-      )
+if __name__ == "__main__":
+    setuptools.setup()

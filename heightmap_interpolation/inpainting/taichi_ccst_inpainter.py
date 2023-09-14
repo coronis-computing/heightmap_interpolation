@@ -1,54 +1,25 @@
-# Copyright (c) 2020 Coronis Computing S.L. (Spain)
-# All rights reserved.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-#
-# Author: Ricard Campos (ricard.campos@coronis.es)
-
-import numpy as np
-from abc import ABC, abstractmethod
-import matplotlib.pyplot as plt
-import os
-import cv2
-import math
-from timeit import default_timer as timer
-from scipy.interpolate import RegularGridInterpolator
-import numpy as np
+from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
 from heightmap_interpolation.inpainting.initializer import Initializer
-from heightmap_interpolation.inpainting.convolver import Convolver
-from heightmap_interpolation.inpainting.update_at_mask import update_at_mask
+import heightmap_interpolation.inpainting.differential as diff
+import taichi as ti
+from timeit import default_timer as timer
+import matplotlib.pyplot as plt
+import cv2
+import os
+import math
+import numpy as np
+import heightmap_interpolation.inpainting.differential as diff
 
 
-class FDPDEInpainter(ABC):
-    """Abstract base class for Finite-Differences Partial Differential Equation (FDPDE) Inpainters
+@ti.data_oriented
+class TaichiCCSTInpainter():
+    """Taichi Lang implementation of the Continous Curvature Splines in Tension (CCST) inpainter
 
-        Common interphase for PDE-based inpainting methods. Solves the problem using finite differences in a gradient-descent manner.
+    Implements the method in:
+      Smith, W. H. F, and P. Wessel, 1990, Gridding with continuous curvature splines in tension, Geophysics, 55, 293-305.
 
-        Attributes:
-            dt (float): Gradient descent step size.
-            rel_change_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
-            rel_change_tolerance (float): Stop the optimization when the energy descent between iterations is less than
-            max_iters (int): Maximum number of iterations for the optimizer.
-            relaxation (float): Over-relaxation parameter. It is still under testing, use with care.
-            mgs_levels (int): Number of levels of detail to use in the Mult-Grid Solver (MGS). Setting it to 1 deactivates the MGS.
-            mgs_min_res (int): minimum resolution (width or height) allowed for a level in the MGS. If the level of detail in the pyramid gets to a value lower than this, the pyramid construction will stop.
-            print_progress (bool): Print information about the progress of the optimization on screen.
-            print_progress_iters (int): If print_progress==True, the information will be printed every this number of iterations.
-            init_with (str): initializer for the unknown data before applying the optimization.
-            convolver_type (str): the convolver used for all the convolutions required by the solver.
-            debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
-        """
+    Should mimic GMT surface (http://gmt.soest.hawaii.edu/doc/latest/surface.html)
+    """
     def __init__(self, **kwargs):
         """Constructor
 
@@ -63,8 +34,9 @@ class FDPDEInpainter(ABC):
             print_progress (bool): Print information about the progress of the optimization on screen.
             print_progress_iters (int): If print_progress==True, the information will be printed every this number of iterations.
             init_with (str): initializer for the unknown data before applying the optimization.
-            convolver_type (str): the convolver used for all the convolutions required by the solver.
+            [NOT USED] convolver_type (str): the convolver used for all the convolutions required by the solver.
             debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
+            ti_arch: Taichi Lang architecture where the expensive parts of the processing will be executed.
         """
         super().__init__()
         # --- Gather and check the input parameters ---
@@ -79,10 +51,12 @@ class FDPDEInpainter(ABC):
         self.mgs_min_res = kwargs.pop("mgs_min_res", 100)
         self.init_with = kwargs.pop("init_with", "zeros")
         self.convolver_type = kwargs.pop("convolver", "masked")
-        self.convolver = Convolver(self.convolver_type)
+        #self.convolver = Convolver(self.convolver_type)
         self.debug_dir = kwargs.pop("debug_dir", "")
         self.ts = 0 # ts is just a timer used to print the execution time of some of the steps
-
+        self.tension = kwargs.pop("tension", 0.0)
+        self.ti_arch = kwargs.pop("ti_arch", "gpu")
+        
         if self.dt <= 0:
             raise ValueError("update_step_size must be larger than zero")
         if self.rel_change_tolerance <= 0:
@@ -97,11 +71,13 @@ class FDPDEInpainter(ABC):
             raise ValueError("mgs_levels must be an integer")
         if not isinstance(self.mgs_min_res, int):
             raise ValueError("mgs_min_res must be an integer")
+        if self.tension < 0. or self.tension > 1.:
+            raise ValueError("tension parameter must be a number between 0 and 1 (included)")
 
         # Some convenience variables to print progress
         #decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance) # DevNote: this does not work as expected yet...
         decimal_places_to_show = 10
-        self.print_progress_table_row_str = "|{:>11d}|{:>" + str(26) + "." + str(decimal_places_to_show) + "f}|"
+        self.print_progress_table_row_str = "|{:11d}|{:" + str(26) + "." + str(decimal_places_to_show) + "f}|"
         self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(26) + "." + str(
             decimal_places_to_show) + "f}|"
 
@@ -113,6 +89,24 @@ class FDPDEInpainter(ABC):
 
         # Init the initializer object
         self.initializer = Initializer(self.init_with)
+
+        # Initialize Taichi Lang    
+        if self.ti_arch == 'cpu':
+            ti.init(arch=ti.cpu)
+        elif self.ti_arch == 'gpu':
+            ti.init(arch=ti.gpu)
+        elif self.ti_arch == 'cuda':
+            ti.init(arch=ti.cuda)
+        elif self.ti_arch == 'vulkan':
+            ti.init(arch=ti.vulkan)
+        elif self.ti_arch == 'opengl':
+            ti.init(arch=ti.opengl)
+        elif self.ti_arch == 'metal':
+            ti.init(arch=ti.metal)
+
+        # Define Taichi constants 
+        self.laplacian_kernel_2d_ti = ti.field(dtype=ti.f32, shape=(3, 3))
+        self.laplacian_kernel_2d_ti.from_numpy(diff.laplacian_kernel_2d)
 
     def get_config(self):
         # Convert the internal configuration of the inpainter into a dictionary
@@ -244,8 +238,9 @@ class FDPDEInpainter(ABC):
 
         return inpainted
 
-    def inpaint_grid(self, image, mask):
-        # Actual inpainting function on a single-channel, single-scale image
+
+    def inpaint_grid(self, image_np, mask_np):
+        # Actual inpainting function on a single-channel, single-scale image (for the moment, we do not consider multi-grid solvers)
         #
         # Input:
         #   img: input image to be inpainted
@@ -254,84 +249,45 @@ class FDPDEInpainter(ABC):
         # Output:
         #   f: inpainted image
 
-        mask_inv = 1-mask
+        mask_inv_np = 1-mask_np
 
         if self.convolver_type.startswith("masked"):
-            mask_inp = cv2.dilate(np.asarray(mask_inv, dtype="uint8"), np.ones((3, 3))) == 1
+            mask_inp_np = cv2.dilate(np.asarray(mask_inv_np, dtype="uint8"), np.ones((3, 3))) == 1
         else:
-            mask_inp = None
-        # if self.convolver_type.startswith("masked"):
-        #     pi_fun = lambda f: f
-        # else:
-        pi_fun = lambda f: f*mask_inv + image*mask
+            mask_inp_np = None
+        # !!! TODO: use the mask_inp...
+        
+        # Convert to Taichi types
+        h, w = image_np.shape[0:2]
+        self.image = ti.field(dtype=ti.f32, shape=(h, w))
+        self.f = ti.field(dtype=ti.f32, shape=(h, w))
+        self.image.from_numpy(image_np)
+        self.f.from_numpy(image_np)            
+        
+        # Boolean types do not exist, so we convert them to integers
+        self.mask = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask.from_numpy(mask_np.astype(int))
+        self.mask_inv = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask_inv.from_numpy(mask_inv_np.astype(int))
+        mask_inp_np = cv2.dilate(np.asarray(mask_inv_np, dtype="uint8"), np.ones((3, 3))) == 1
+        self.mask_inp = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask_inp.from_numpy(mask_inp_np.astype(int))
 
-        # Initialize
-        f = image
-        #f[~mask] = 0 # Just in case the values not filled in the image are NaNs!
+        # Some helper intermediate matrices
+        self.harmonic = ti.field(dtype=ti.f32, shape=(h, w))
+        self.biharmonic = ti.field(dtype=ti.f32, shape=(h, w))
+        self.step_f = ti.field(dtype=ti.f32, shape=(h, w))          
+        self.fprev = ti.field(dtype=ti.f32, shape=(h, w))
+        self.fprev.from_numpy(image_np) 
+        # self.fnew = ti.field(dtype=ti.f32, shape=(h, w))
+        # self.fnew.from_numpy(f_np) 
 
-        # Iterate
-        diff = 100000
-        # last_diff = 0
-        for i in range(0, self.max_iters):
-            # Perform a step in the optimization
-            # fnew = pi_fun(f + self.dt*self.step_fun(f, mask_inv))
-            fnew = update_at_mask(image, f+self.dt*self.step_fun(f, mask_inp), mask_inv)
+        # Inpaint!
+        self.inpaint_loop_2()
 
-            # Over-relaxation?
-            if self.relaxation > 1:
-                fnew = pi_fun(f * (1 - self.relaxation) + fnew * self.relaxation)
-
-            # Compute the difference with the previous step
-            # This is a costly operation, do it every now and then:
-            if i % self.rel_change_iters == 0:
-                # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
-                diff = self.fast_norm(fnew.flatten() - f.flatten()) / self.fast_norm(fnew.flatten())
-
-            # Update the function
-            f = fnew            
-
-            if self.print_progress and i % self.print_progress_iters == 0:
-                if i == 0:
-                    print("+-----------+--------------------------+")
-                    print("| Iteration | Function relative change |")
-                    print("+-----------+--------------------------+")
-                # print("Iter. %d, function relative change = %.10f" % (i, diff))
-                # print(("|{:<11d}|{:>" + str(self.get_decimal_places(self.rel_change_tolerance)) + "f}|").format(i, diff))
-                print(self.print_progress_table_row_str.format(i, diff))
-
-            if self.debug_dir and i % self.print_progress_iters == 0:
-                imgplot = plt.imshow(f)
-                plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
-
-            #  % Stop if "almost" no change
-            if i % self.rel_change_iters == 0 and diff < self.rel_change_tolerance:
-                if self.print_progress:
-                    print("+-----------+--------------------------+")
-                    print(self.print_progress_last_table_row_str.format(diff))
-                    print("+-----------+--------------------------+")
-                if self.debug_dir:
-                    imgplot = plt.imshow(f)
-                    plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
-                return f
-
-            # if i % self.rel_change_iters == 0:
-            #     last_diff = diff
-
-            # Check for increasing relative changes... should not happen in a convex optimization!
-            # if last_diff > diff:
-            #     print("[ERROR] Residuals increased from the last iteration. Since this should be a convex optimization, this probably means the step size is too large!")
-            #     return f
-            # last_diff = diff
-
-        # If we got here, issue a warning because the maximum number of iterations has been reached (normally means that
-        # the solution will not be useful because it did not converge...)
-        print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
-
-        return f
-
-    def fast_norm(self, vector):
-        return np.sqrt(np.sum(np.square(vector)))
-
+        # Return the results
+        return self.f.to_numpy()
+ 
     # Printing utilities...
     def print_start(self, msg):
         if self.print_progress:
@@ -351,8 +307,133 @@ class FDPDEInpainter(ABC):
         if math.floor(number) == number:
             return 0
         return len("{:f}".format(number).split(".")[1])
+    
+    def inpaint_loop(self):
+        # Iterate until convergence (or max number of iterations reached)
+        iter = 0
+        converged = False
+        while not converged and iter < self.max_iters:
+            # Perform a step in the optimization
+            #converged = self.inpaint_step(iter)
+            self.update()
+            if iter % self.rel_change_iters == 0: 
+                diff = self.step_diff()
+                converged = diff < self.rel_change_tolerance
+            if self.print_progress and iter % self.print_progress_iters == 0:
+                if iter == 0:
+                    print("+-----------+--------------------------+")
+                    print("| Iteration | Function relative change |")
+                    print("+-----------+--------------------------+")
+                print(self.print_progress_table_row_str.format(iter, diff))
 
-        # --- The method to be implemented by each FDPDE inpainter ---
-    @abstractmethod
-    def step_fun(self, f, mask):
-        pass
+            if iter > 0 and (iter+1) % self.rel_change_iters == 0: 
+                # In the following iteration, we will have to check the relative change, so save the last value
+                self.fprev.copy_from(self.f)
+                #self.update_f()
+            # self.fnew.copy_from(self.f)
+            iter += 1
+        if iter >= self.max_iters:
+            print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
+
+    def inpaint_loop_2(self):
+        # Iterate until convergence (or max number of iterations reached)
+        iter = 0
+        converged = False
+        print("+-----------+--------------------------+")
+        print("| Iteration | Function relative change |")
+        print("+-----------+--------------------------+")
+        if self.debug_dir:
+            imgplot = plt.imshow(self.f.to_numpy())
+            plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)), bbox_inches="tight")
+        while not converged and iter < self.max_iters:
+            for i in range(self.rel_change_iters-1):
+                self.update()
+            self.fprev.copy_from(self.f)
+            self.update()
+            diff = self.step_diff()
+            converged = diff < self.rel_change_tolerance
+            iter = iter + self.rel_change_iters
+            if self.print_progress and iter % self.print_progress_iters == 0:
+                if iter == 0:
+                    print("+-----------+--------------------------+")
+                    print("| Iteration | Function relative change |")
+                    print("+-----------+--------------------------+")
+                print(self.print_progress_table_row_str.format(iter, diff))
+                if self.debug_dir:
+                    imgplot = plt.imshow(self.f.to_numpy())
+                    plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)), bbox_inches="tight")
+                
+        if iter >= self.max_iters:
+            print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
+        else:
+            print("+-----------+--------------------------+")
+            print(self.print_progress_last_table_row_str.format(diff))
+            print("+-----------+--------------------------+")
+
+    # @ti.kernel
+    # def inpaint_step(self, iter: ti.types.i32) -> ti.types.i32:
+    #     self.update()
+    #     converged = self.converged(iter)        
+    #     return converged
+
+    @ti.func
+    def laplacian(self, img, img_out):
+        return convolve_taichi(img, img_out, self.laplacian_kernel_2d_ti)
+
+    @ti.kernel
+    def update(self):        
+        self.ccst_step_fun()
+        for i in ti.grouped(self.f):        
+            new_val = self.f[i] + self.dt*self.step_f[i]
+            self.f[i] = self.pi_fun(new_val, i)
+            # DevNote: for the moment, we sacrifice relaxation, as it slows down processing a lot as it was originally implemented... maybe we could run it every now and then?
+            # if self.relaxation > 1:
+                #     self.fnew[i] = self.pi_fun(self.f[i] * (1 - self.relaxation) + self.fnew[i] * self.relaxation)
+    
+    @ti.kernel
+    def step_diff(self) -> ti.types.f32:
+        diff_fprev_sq_sum = 0.0
+        fprev_sq_sum = 0.0
+        for i in ti.grouped(self.f):
+            diff_fprev = self.f[i]-self.fprev[i]
+            diff_fprev_sq = diff_fprev*diff_fprev
+            fprev_sq = self.fprev[i]*self.fprev[i]
+            diff_fprev_sq_sum += diff_fprev_sq
+            fprev_sq_sum += fprev_sq
+        norm_diff_fprev = ti.sqrt(diff_fprev_sq_sum)
+        norm_fprev = ti.sqrt(fprev_sq_sum)
+        diff = norm_diff_fprev/norm_fprev
+        return diff
+
+    @ti.kernel
+    def update_f(self):
+        for i in ti.grouped(self.f):
+            self.fprev[i] = self.f[i]
+
+    @ti.func
+    def pi_fun(self, val, i):
+        return val*self.mask_inv[i] + self.image[i]*self.mask[i]
+
+    @ti.func
+    def ccst_step_fun(self):
+        self.laplacian(self.f, self.harmonic) # , mask) !!!Ignoring mask for the moment!!!
+        self.laplacian(self.harmonic, self.biharmonic)
+
+        for i in ti.grouped(self.step_f):
+            self.step_f[i] = -1*((1-self.tension)*self.biharmonic[i] - self.tension*self.harmonic[i])
+
+@ti.func
+def convolve_taichi(img, img_out, kernel):
+    h, w = img.shape
+    fh, _ = kernel.shape
+    fr = fh // 2 # Radius of the filter (should be odd!)
+
+    for i, j in ti.ndrange(h, w):
+        k_begin, k_end = ti.max(0, i - fr), ti.min(h, i + fr + 1)
+        l_begin, l_end = ti.max(0, j - fr), ti.min(w, j + fr + 1)
+
+        total = 0.0
+        for k, l in ti.ndrange((k_begin, k_end), (l_begin, l_end)):
+            total += img[k, l] * kernel[k-i+fr, l-j+fr]
+        
+        img_out[i, j] = total

@@ -34,6 +34,7 @@ from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import Qu
 from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
 from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
+from heightmap_interpolation.inpainting.taichi_ccst_inpainter import TaichiCCSTInpainter
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVXPhotoInpainter
@@ -217,7 +218,7 @@ def interpolate(params):
             elevation_int[cur_mask_int] = zi
 
         # --- Gridded data interpolation/inpainting ---
-        gridded_methods = ['harmonic', 'tv', 'ccst', 'amle', 'navier-stokes', 'telea', 'shiftmap']
+        gridded_methods = ['harmonic', 'tv', 'ccst', 'ccst-ti', 'amle', 'navier-stokes', 'telea', 'shiftmap']
         if params.subparser_name.lower() in gridded_methods:
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
@@ -247,10 +248,14 @@ def interpolate(params):
                 options = get_common_fd_pde_inpainters_params_from_args(params)
                 options["epsilon"] = params.epsilon
                 inpainter = TVInpainter(**options)
-            elif params.subparser_name.lower() == "ccst":
+            elif params.subparser_name[0:4].lower() == "ccst":
                 options = get_common_fd_pde_inpainters_params_from_args(params)
                 options["tension"] = params.tension
-                inpainter = CCSTInpainter(**options)
+                if len(params.subparser_name) > 4 and params.subparser_name[4:] == "-ti":
+                    options["ti_arch"] = params.ti_arch
+                    inpainter = TaichiCCSTInpainter(**options)                    
+                else:
+                    inpainter = CCSTInpainter(**options)
             elif params.subparser_name.lower() == "amle":
                 options = get_common_fd_pde_inpainters_params_from_args(params)
                 options["convolve_in_1d"] = params.convolve_in_1d
@@ -382,6 +387,14 @@ def parse_args(args=None):
     parser_ccst.add_argument("--rel_change_tolerance", type=float, default=1e-8, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
     parser_ccst = add_common_fd_pde_inpainters_args(parser_ccst)
     parser_ccst.add_argument("--tension", type=float, default=0.3, help="Tension parameter weighting the contribution between a harmonic and a biharmonic interpolation (see the docs and the original reference for more details)")
+    
+    # Parser for the "ccst-ti" method
+    parser_ccstti = subparsers.add_parser("ccst-ti", help="Continous Curvature Splines in Tension (CCST) inpainter (Taichi Lang implementation)")
+    parser_ccstti.add_argument("--update_step_size", type=float, default=0.01, help="Update step size")
+    parser_ccstti.add_argument("--rel_change_tolerance", type=float, default=1e-8, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
+    parser_ccstti = add_common_fd_pde_inpainters_args(parser_ccstti)
+    parser_ccstti.add_argument("--tension", type=float, default=0.3, help="Tension parameter weighting the contribution between a harmonic and a biharmonic interpolation (see the docs and the original reference for more details)")
+    parser_ccstti.add_argument("--ti_arch", type=str, default="gpu", help="Taichi Lang architecture. Available: 'cpu', 'gpu', 'cuda', 'vulkan', 'opengl', 'metal'.")
 
     # Parser for the "amle" method
     parser_amle = subparsers.add_parser("amle", help="Absolutely Minimizing Lipschitz Extension (AMLE) inpainter")
@@ -403,6 +416,9 @@ def parse_args(args=None):
 
     return parser.parse_args(args)
 
+def main():
+    interpolate(parse_args())
+
 # Main function
 if __name__ == "__main__":
-    interpolate(parse_args())
+    main()

@@ -1,6 +1,7 @@
 from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
 from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
+from heightmap_interpolation.inpainting.taichi_ccst_inpainter import TaichiCCSTInpainter
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 
@@ -32,7 +33,7 @@ def default_options(method):
         options["rel_change_tolerance"] = 1e-5
         options["max_iters"] = 1e5
         options["show_progress"] = False
-    elif method.lower() == "ccst":
+    elif method.lower() == "ccst" or method.lower() == "ccst-ti":
         options["update_step_size"] = 0.01
         # options["rel_change_tolerance"] = 1e-8
         options["rel_change_tolerance"] = 1e-8
@@ -69,7 +70,7 @@ def create_fd_pde_inpainter(method, custom_options=None):
         options["max_iters"] = 1e5
         options["show_progress"] = False
         inpainter = TVInpainter(**options)
-    elif method.lower() == "ccst":
+    elif method[0:4].lower() == "ccst":
         options["update_step_size"] = 0.01
         # options["rel_change_tolerance"] = 1e-8
         options["rel_change_tolerance"] = 1e-8
@@ -77,6 +78,11 @@ def create_fd_pde_inpainter(method, custom_options=None):
         # options["relaxation"] = 1.4
         options["tension"] = 0.3
         inpainter = CCSTInpainter(**options)
+        if len(method) > 4 and method[4:] == "ti":
+            options["ti_arch"] = "gpu"
+            inpainter = TaichiCCSTInpainter(**options)
+        else:
+            print("[ERROR] The required method (" + method + ") is unknown. Available options: sobolev, tv, ccst, amle, navier-stokes, telea")
     elif method.lower() == "amle":
         options["update_step_size"] = 0.01
         options["rel_change_tolerance"] = 1e-7
@@ -88,6 +94,6 @@ def create_fd_pde_inpainter(method, custom_options=None):
     elif method.lower() == "telea":
         inpainter = OpenCVInpainter(method="telea", radius=5)
     else:
-        print("[ERROR] The required method (" + method + ") is unknown. Available options: sobolev, tv, ccst, amle, navier-stokes, telea")
+        print("[ERROR] The required method (" + method + ") is unknown. Available options: sobolev, tv, ccst, ccst-ti, amle, navier-stokes, telea")
 
     return inpainter
