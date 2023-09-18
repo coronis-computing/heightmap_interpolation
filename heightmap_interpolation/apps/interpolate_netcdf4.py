@@ -19,6 +19,7 @@
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
 import argparse
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -402,7 +403,12 @@ def parse_args(args=None):
     parser_shiftmap = subparsers.add_parser("shiftmap", help="OpenCV's xphoto module's Shiftmap inpainter")
 
     return parser.parse_args(args)
+    
+
+def main():
+    interpolate(parse_args())
+
 
 # Main function
 if __name__ == "__main__":
-    interpolate(parse_args())
+    main()
