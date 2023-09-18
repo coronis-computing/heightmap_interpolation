@@ -312,9 +312,9 @@ def parse_args(args=None):
                         help="Name of the variable storing the elevation grid in the input file.")
     parser.add_argument("--interpolation_flag_var", action="store", type=str, default=None,
                         help="Name of the variable storing the per-cell interpolation flag in the input file (0 == known value, 1 == interpolated/to interpolate cell). If not set, it will interpolate the locations in the elevation variable containing an invalid (NaN) value.")
-    parser.add_argument("-v, --verbose", action="store_true", dest="verbose", default=False,
+    parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,
                         help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")
-    parser.add_argument("-s, --show", action="store_true", dest="show", default=False,
+    parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
                         help="Show interpolation problem and results on screen")
 
     # Parser for the "nearest" method
