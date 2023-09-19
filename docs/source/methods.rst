@@ -572,7 +572,7 @@ Suitable for
 ++++++++++++
 
 * Interpolating gaps in terrain data using a better interpolant, but trying not to overshoot the original data.
-* Scattered data: this is the only approach that always takes into account scattered data properly (*ccst* with a tension apoaching 1 also does, but not so well if tension approaches 0...).
+* Scattered data: this is the only approach that always takes into account scattered data properly (*ccst* with a tension close to 1 also does, but not so well if tension approaches 0...).
 
 Advantages
 ++++++++++
