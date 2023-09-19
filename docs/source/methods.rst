@@ -414,7 +414,7 @@ This method has many analogies:
 * It can be seen as an "isotropic diffusion" of the elevation values at the borders surrounding the missing data towards the area to interpolate.
 * Its evolution follows the `heat diffusion equation <https://en.wikipedia.org/wiki/Heat_equation>`_.
 * It minimizes the Sobolev norm on the grid, constrained to the input reference data.
-* The interpolated surface is a "minimum energy surface", and many times it is described as the "shape a film of soap would take if layed over the data points".
+* The interpolated surface is a "minimum energy surface", and many times it is described as the "shape a film of soap would take if laid over the data points".
 
 Parameters
 ++++++++++
