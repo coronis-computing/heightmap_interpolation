@@ -20,18 +20,18 @@ If you prefer to install it in a virtual environment:
 python3.7 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-python3.7 setup.py install
+pip install .
 ```
-
-For convenience, after installation, we recommend to put the main script of the package within the path:
-
- 
 
 ## Usage
 
-As mentioned above, the main entry point for interpolating NetCDF4 datasets is the `interpolate_netcdf4.py` script.
+After installation, you should have the main entry point for interpolating NetCDF4 datasets already in the path, so you can call:
 
-Since this package was developed within the EMODnet Bathymetry project, for the moment no other inputs are expected. For other inputs, take the code in this script as reference and use directly the different interpolation modules at your convenience. 
+```
+interpolate_netcdf4 --help
+```
+
+Since this package was developed within the EMODnet Bathymetry project, for the moment no other inputs are expected. For other inputs, take the code in the `apps/interpolate_netcdf4.py` script as reference and use directly the different interpolation modules at your convenience. 
 
 ## Docker
 

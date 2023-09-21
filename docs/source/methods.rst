@@ -381,8 +381,14 @@ Common Parameters
 The parameters that are common to all PDE-based interpolators affect the behaviour of the Finite-Differences solver:
 
 * ``--update_step_size`` (float): gradient descent step size. A default is provided by each method. However, depending on the problem, you could tune it to a higher value to speed-up convergence (but beware of overshooting and missing the minimum!).
-* ``--rel_change_tolerance`` (float): stop the optimization when the energy descent between iterations is less than this value.
-* ``--rel_change_iters`` (int): since checking for the termination criteria of ``--rel_change_tolerance`` is costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
+* ``--term_criteria`` (string): the termination criteria to use. Available:
+
+    - ``relative``: stop if the relative change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute``: stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute_percent`` (default): stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres`` multiplied by the absolute range of depths in the dataset (i.e., the absolute value is range_depths * absolute_change_percent).
+
+* ``--term_thres`` (float): stop the optimization when the energy descent between iterations is less than this value. Its meaning depends on ``--term_criteria``.
+* ``--term_check_iters`` (int): since checking for the termination criteria may be costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
 * ``--max_iters`` (int): maximum number of iterations for the optimizer (will end the optimization even if there is no convergence on the minimization).
 * ``--relaxation`` (float): over-relaxation parameter. *This paramter  is still under testing, use with care*.
 * ``--mgs_levels`` (int): number of levels of detail to use in the Mult-Grid Solver (MGS, see :ref:`inpainting_mgs`). Setting it to 1 deactivates the MGS.
