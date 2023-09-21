@@ -45,9 +45,12 @@ def add_common_fd_pde_inpainters_args(parser):
 
     # The following two commented parameters are common... but with different default values!
     # parser.add_argument("--update_step_size", default=0.01, help="Update step size")
-    # parser.add_argument("--rel_change_tolerance", default=0.01,
+    # parser.add_argument("--term_thres", default=0.01,
     #                              help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
-    parser.add_argument("--rel_change_iters", type=int, default=1000, help="Number of iterations in the optimization after which we will check if the relative tolerance is below the threshold")
+    parser.add_argument("--term_criteria", type=str, default='relative', help="The termination criteria to use. Available: \n - 'relative': stop if the relative change between the inpainted elevations in the current and a previous step is smaller than this value.\n" +
+                                                                                     "'absolute': stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than this value." +
+                                                                                     "'absolute_percent': stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than this value multiplied by the absolute range of dephts in the dataset (i.e., the absolute value is range_depths * absolute_change_percent).\n")
+    parser.add_argument("--term_check_iters", type=int, default=1000, help="Number of iterations in the optimization after which we will check for the termination condition")    
     parser.add_argument("--max_iters", type=int, default=1000000, help="Maximum number of iterations in the optimization.")
     parser.add_argument("--relaxation", type=float, default=0, help="Set to >1 to perform over-relaxation at each iteration")
     # The following parameter gest its value from "verbose" global argument
@@ -65,8 +68,9 @@ def add_common_fd_pde_inpainters_args(parser):
 def get_common_fd_pde_inpainters_params_from_args(params):
     """Gets the set of common parameters/options of all FD-PDE inpainters from the parameters structure derived from ArgumentParser"""
     options = {"update_step_size": params.update_step_size,
-               "rel_change_iters": params.rel_change_iters,
-               "rel_change_tolerance": params.rel_change_tolerance,
+               "term_criteria": params.term_criteria,
+               "term_check_iters": params.term_check_iters,
+               "term_thres": params.term_thres,
                "max_iters": params.max_iters,
                "relaxation": params.relaxation,
                "print_progress": params.verbose,
@@ -289,7 +293,7 @@ def interpolate(params):
         images = [elevation, elevation_int]
         titles = ['Original', 'Interpolated']
         for (ax, image, title) in zip(axes, images, titles):
-            ax.imshow(image)
+            ax.imshow(image, origin='lower')
             ax.set_title(title)
             ax.set_axis_off()
         fig.tight_layout()
@@ -367,27 +371,27 @@ def parse_args(args=None):
     # Parser for the "harmonic" method
     parser_harmonic = subparsers.add_parser("harmonic", help="Harmonic inpainter")
     parser_harmonic.add_argument("--update_step_size", type=float, default=0.2, help="Update step size")
-    parser_harmonic.add_argument("--rel_change_tolerance", type=float, default=1e-5, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
+    parser_harmonic.add_argument("--term_thres", type=float, default=1e-5, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
     parser_harmonic = add_common_fd_pde_inpainters_args(parser_harmonic)
 
     # Parser for the "tv" method
     parser_tv = subparsers.add_parser("tv", help="Inpainter minimizing Total-Variation (TV) across the 'image'")
     parser_tv.add_argument("--update_step_size", type=float, default=0.225, help="Update step size")
-    parser_tv.add_argument("--rel_change_tolerance", type=float, default=1e-5, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
+    parser_tv.add_argument("--term_thres", type=float, default=1e-5, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
     parser_tv = add_common_fd_pde_inpainters_args(parser_tv)
     parser_tv.add_argument("--epsilon", type=float, default=1, help="A small value to be added when computing the norm of the gradients during optimization, to avoid a division by zero")
 
     # Parser for the "ccst" method
     parser_ccst = subparsers.add_parser("ccst", help="Continous Curvature Splines in Tension (CCST) inpainter")
     parser_ccst.add_argument("--update_step_size", type=float, default=0.01, help="Update step size")
-    parser_ccst.add_argument("--rel_change_tolerance", type=float, default=1e-8, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
+    parser_ccst.add_argument("--term_thres", type=float, default=1e-8, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
     parser_ccst = add_common_fd_pde_inpainters_args(parser_ccst)
     parser_ccst.add_argument("--tension", type=float, default=0.3, help="Tension parameter weighting the contribution between a harmonic and a biharmonic interpolation (see the docs and the original reference for more details)")
 
     # Parser for the "amle" method
     parser_amle = subparsers.add_parser("amle", help="Absolutely Minimizing Lipschitz Extension (AMLE) inpainter")
     parser_amle.add_argument("--update_step_size", type=float, default=0.01, help="Update step size")
-    parser_amle.add_argument("--rel_change_tolerance", type=float, default=1e-7, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
+    parser_amle.add_argument("--term_thres", type=float, default=1e-7, help="If the relative change between the inpainted elevations in the current and a previous step is smaller than this value, the optimization will stop")
     parser_amle = add_common_fd_pde_inpainters_args(parser_amle)
     parser_amle.add_argument("--convolve_in_1d", action="store_true", help="Perform 1D convolutions instead of using the 2D convolution indicated in --convolver")
 
