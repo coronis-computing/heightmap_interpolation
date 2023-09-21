@@ -371,27 +371,27 @@ def parse_args(args=None):
     # Parser for the "harmonic" method
     parser_harmonic = subparsers.add_parser("harmonic", help="Harmonic inpainter")
     parser_harmonic.add_argument("--update_step_size", type=float, default=0.2, help="Update step size")
-    parser_harmonic.add_argument("--term_thres", type=float, default=1e-4, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
+    parser_harmonic.add_argument("--term_thres", type=float, default=1e-5, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
     parser_harmonic = add_common_fd_pde_inpainters_args(parser_harmonic)
 
     # Parser for the "tv" method
     parser_tv = subparsers.add_parser("tv", help="Inpainter minimizing Total-Variation (TV) across the 'image'")
     parser_tv.add_argument("--update_step_size", type=float, default=0.225, help="Update step size")
-    parser_tv.add_argument("--term_thres", type=float, default=1e-4, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
+    parser_tv.add_argument("--term_thres", type=float, default=1e-5, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
     parser_tv = add_common_fd_pde_inpainters_args(parser_tv)
     parser_tv.add_argument("--epsilon", type=float, default=1, help="A small value to be added when computing the norm of the gradients during optimization, to avoid a division by zero")
 
     # Parser for the "ccst" method
     parser_ccst = subparsers.add_parser("ccst", help="Continous Curvature Splines in Tension (CCST) inpainter")
     parser_ccst.add_argument("--update_step_size", type=float, default=0.01, help="Update step size")
-    parser_ccst.add_argument("--term_thres", type=float, default=1e-4, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
+    parser_ccst.add_argument("--term_thres", type=float, default=1e-5, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
     parser_ccst = add_common_fd_pde_inpainters_args(parser_ccst)
     parser_ccst.add_argument("--tension", type=float, default=0.3, help="Tension parameter weighting the contribution between a harmonic and a biharmonic interpolation (see the docs and the original reference for more details)")
 
     # Parser for the "amle" method
     parser_amle = subparsers.add_parser("amle", help="Absolutely Minimizing Lipschitz Extension (AMLE) inpainter")
     parser_amle.add_argument("--update_step_size", type=float, default=0.01, help="Update step size")
-    parser_amle.add_argument("--term_thres", type=float, default=1e-4, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
+    parser_amle.add_argument("--term_thres", type=float, default=1e-5, help="Termination threshold. Its meaning depends on the --term_criteria parameter.")
     parser_amle = add_common_fd_pde_inpainters_args(parser_amle)
     parser_amle.add_argument("--convolve_in_1d", action="store_true", help="Perform 1D convolutions instead of using the 2D convolution indicated in --convolver")
 
