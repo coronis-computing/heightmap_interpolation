@@ -6,7 +6,13 @@ Please visit the documentation at: https://emodnet-heightmap-interpolation.readt
 
 ## Installation
 
-This package and all its requirements can be installed through `setuptools` using:
+This package is available through [PyPI](https://pypi.org/project/heightmap-interpolation/):
+
+```
+pip install heightmap-interpolation
+```
+
+Otherwise, the package and all its requirements can be installed from sources through `setuptools` using:
 
 ```
 python setup.py install 
