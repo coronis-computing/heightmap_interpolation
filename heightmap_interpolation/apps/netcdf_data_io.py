@@ -85,7 +85,41 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
     lats_mat = np.tile(lats_1d.reshape(-1, 1), (1, num_lon))
     lons_mat = np.tile(lons_1d, (num_lat, 1))
 
-    # Are we using a KML to restrict the interpolation?
+    work_areas = create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d)
+
+    return lats_mat, lons_mat, elevation, mask_int, mask_ref, work_areas
+
+
+def write_interpolation_results(input_file, output_file, elevation, mask_int, elevation_var, interpolation_flag_var=None, areas_kml_file=None):
+    # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
+    # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
+    # variable
+    if output_file:
+        shutil.copy(input_file, output_file)
+    else:
+        raise ValueError("Missing output file path!")
+
+    out_ds = nc.Dataset(output_file, "r+")
+    out_ds.variables[elevation_var][:] = elevation
+    if areas_kml_file or not interpolation_flag_var:
+        # Also update the interpolated areas
+        if "interpolation_flag" not in out_ds.variables.keys():
+            out_ds.createVariable('interpolation_flag', 'int8', ('lat', 'lon'))
+            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
+            new_cell_interpolated_flag[~mask_int] = 0
+        else:
+            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
+        new_cell_interpolated_flag[mask_int] = 1
+
+        # # Create the interpolation flag, if was not present in the input
+        # new_cell_interpolated_flag[mask_int] = 1
+        out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
+
+    out_ds.close()
+
+
+def create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d):
+        # Are we using a KML to restrict the interpolation?
     if areas_kml_file:
         # Read the KML file using geopandas
         df = gpd.read_file(areas_kml_file, driver='KML')
@@ -117,6 +151,8 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
 
         # Get minimum lat/lon and pixel resolution
         xmin, ymin, xmax, ymax = [lons_1d.min(), lats_1d.min(), lons_1d.max(), lats_1d.max()]
+        num_lon = len(lons_1d)
+        num_lat = len(lats_1d)
         xres = (xmax - xmin) / float(num_lon)
         yres = (ymax - ymin) / float(num_lat)
 
@@ -171,32 +207,4 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
     else:
         work_areas = np.full((elevation.shape[0], elevation.shape[1], 1), True)
 
-    return lats_mat, lons_mat, elevation, mask_int, mask_ref, work_areas
-
-
-def write_interpolation_results(input_file, output_file, elevation, mask_int, elevation_var, interpolation_flag_var=None, areas_kml_file=None):
-    # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
-    # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
-    # variable
-    if output_file:
-        shutil.copy(input_file, output_file)
-    else:
-        raise ValueError("Missing output file path!")
-
-    out_ds = nc.Dataset(output_file, "r+")
-    out_ds.variables[elevation_var][:] = elevation
-    if areas_kml_file or not interpolation_flag_var:
-        # Also update the interpolated areas
-        if "interpolation_flag" not in out_ds.variables.keys():
-            out_ds.createVariable('interpolation_flag', 'int8', ('lat', 'lon'))
-            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
-            new_cell_interpolated_flag[~mask_int] = 0
-        else:
-            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
-        new_cell_interpolated_flag[mask_int] = 1
-
-        # # Create the interpolation flag, if was not present in the input
-        # new_cell_interpolated_flag[mask_int] = 1
-        out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
-
-    out_ds.close()
+    return work_areas

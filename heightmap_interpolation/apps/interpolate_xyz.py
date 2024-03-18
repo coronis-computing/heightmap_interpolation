@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 import math
 from timeit import default_timer as timer
 from heightmap_interpolation.misc.conditional_print import ConditionalPrint
-from heightmap_interpolation.apps.netcdf_data_io import load_interpolation_input_data, write_interpolation_results
 # All interpolation methods
 from heightmap_interpolation.interpolants.nearest_neighbor_interpolant import NearestNeighborInterpolant
 from heightmap_interpolation.interpolants.linear_interpolant import LinearInterpolant
@@ -38,23 +37,60 @@ from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVXPhotoInpainter
-
-
 from heightmap_interpolation.apps.apps_common import add_common_fd_pde_inpainters_args, get_common_fd_pde_inpainters_params_from_args, add_inpainting_subparsers
+from netcdf_data_io import create_work_areas
 
+def load_interpolation_input_data_xyz(input_file, separator, raster_step, min_lat = np.NAN, max_lat = np.NAN, min_lon = np.NAN, max_lon = np.NAN, areas_kml_file=None):
+    
+    # Load the xyz (lon, lat, elevation) from a coma(or other)-separated file
+    data = np.genfromtxt(input_file, delimiter=separator)
+    lons = data[:, 0]
+    lats = data[:, 1]
+    elev = data[:, 2]
 
-def interpolate(params):
+    # The result will be a raster, so we need to create it
+    if np.isnan(min_lat) or np.isnan(max_lat) or np.isnan(min_lon) or np.isnan(max_lon):
+        print("[WARNING] The raster extents will be determined by the bounding box of the input XYZ points")
+        min_lat = np.min(lats)
+        min_lon = np.min(lons)
+        max_lat = np.max(lats)
+        max_lon = np.max(lons)
+    else:
+        # Check the values...
+        if min_lat > max_lat:
+            raise Exception("the minimum latitude cannot be larger than the maximum latitude")
+        if min_lon > max_lon:
+            raise Exception("the minimum longitude cannot be larger than the maximum longitude")
+    
+    lats_1d = np.arange(min_lat, max_lat, raster_step)
+    lons_1d = np.arange(min_lon, max_lon, raster_step)
+
+    # Get the dimensions of the grid
+    num_lat = len(lats_1d)
+    num_lon = len(lons_1d)
+
+    # Create the matrix of lat/lon coordinates out of the 1D arrays
+    lats_mat = np.tile(lats_1d.reshape(-1, 1), (1, num_lon))
+    lons_mat = np.tile(lons_1d, (num_lat, 1))
+
+    # Create an EMPTY elevation data
+    elevation = np.zeros_like(lats_mat)
+
+    work_areas = create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d)
+
+    return lons, lats, elev, lats_mat, lons_mat, elevation, work_areas
+
+    
+
+def rasterize(params):
     condp = ConditionalPrint(params.verbose)
 
     # Load the data of the interpolation problem
     if params.verbose:
         condp.print("- Loading data...", end='', flush=True)
         ts = timer()
-    lats_mat, lons_mat, elevation, mask_int, mask_ref, work_areas = load_interpolation_input_data(params.input_file,
-                                                                                                  params.elevation_var,
-                                                                                                  params.interpolation_flag_var,
-                                                                                                  params.areas)
-    elevation_int = np.copy(elevation)
+    lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation_int, work_areas = load_interpolation_input_data_xyz(params.input_file, params.areas)
+    
     if params.verbose:
         te = timer()
         condp.print(" done, {:.2f} sec.".format(te-ts))
@@ -62,12 +98,13 @@ def interpolate(params):
     # Show a bit of information regarding the interpolation problem (percentage of missing data to interpolate w.r.t. the full image)
     if params.verbose:
         condp.print("- Summary of input data:")
-        condp.print("    - Elevation grid has a size of {:d}x{:d} cells".format(elevation.shape[0], elevation.shape[1]))
+        condp.print("    - Input XYZ has {:d} data points".format(lons_ref.shape[0]))
+        condp.print("    - Output elevation grid has a size of {:d}x{:d} cells".format(elevation_int.shape[0], elevation_int.shape[1]))
         if params.areas:
             condp.print("    - Data will be interpolated just at the user-defined areas")
         else:
-            total_cells = elevation.shape[0] * elevation.shape[1]
-            num_cells_to_interpolate = np.count_nonzero(mask_int)
+            total_cells = elevation_int.shape[0] * elevation_int.shape[1]
+            num_cells_to_interpolate = len(elevation_int)
             interp_percent = (num_cells_to_interpolate / total_cells) * 100
             condp.print("    - Cells to interpolate represent a {:.2f}% of the image:".format(interp_percent))
             condp.print("        - Total cells = {:d}".format(total_cells)),
@@ -81,16 +118,9 @@ def interpolate(params):
         # --- Scattered data interpolation ---
         scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf']
         if params.subparser_name.lower() in scattered_methods:
-            # Get the reference points from the current working area
-            cur_mask_ref = np.logical_and(mask_ref, cur_work_area)
-            cur_mask_int = np.logical_and(mask_int, cur_work_area)
-
             # Cast the matrices to a set of "scattered" data points and references
-            lats_ref = lats_mat[cur_mask_ref]
-            lons_ref = lons_mat[cur_mask_ref]
-            elevation_ref = elevation[cur_mask_ref]
-            lats_int = lats_mat[cur_mask_int]
-            lons_int = lons_mat[cur_mask_int]
+            lats_int = lats_mat[cur_work_area]
+            lons_int = lons_mat[cur_work_area]
 
             # Show a bit of information regarding the current area interpolation problem (percentage of missing data to interpolate w.r.t. the full image)
             if params.verbose and params.areas:
@@ -159,7 +189,7 @@ def interpolate(params):
                 # Divide the data into blocks
                 query_block_size = params.query_block_size
                 zi = np.zeros(lons_int.shape)
-                num_int = np.sum(mask_int)
+                num_int = np.sum(cur_work_area)
                 num_blocks = math.ceil(num_int/query_block_size)
                 block_start = 0
                 block_end = min([num_int, query_block_size])
@@ -179,11 +209,13 @@ def interpolate(params):
                 condp.print(" done, {:.2f} sec.".format(te - ts))
 
             # Put the interpolated values back into the elevation matrix
-            elevation_int[cur_mask_int] = zi
+            elevation_int[cur_work_area] = zi
 
         # --- Gridded data interpolation/inpainting ---
         gridded_methods = ['harmonic', 'tv', 'ccst', 'amle', 'navier-stokes', 'telea', 'shiftmap']
         if params.subparser_name.lower() in gridded_methods:
+             = samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation)
+
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
             rows = np.any(cur_work_area, axis=1)
@@ -267,15 +299,13 @@ def parse_args(args=None):
     # Create a sub-parser for each possible interpolator, with its own options
     subparsers = parser.add_subparsers(help='sub-command help', dest='subparser_name')
     parser.add_argument("input_file", action="store", type=str,
-                        help="Input NetCDF file")
+                        help="Input XYZ file")
     parser.add_argument("-o","--output_file", dest="output_file", action="store", type=str,
                         help="Output NetCDF file with interpolated values")
     parser.add_argument("--areas", action="store", type=str, default=None,
                         help="KML file containing the areas that will be interpolated.")
     parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
-                        help="Name of the variable storing the elevation grid in the input file.")
-    parser.add_argument("--interpolation_flag_var", action="store", type=str, default=None,
-                        help="Name of the variable storing the per-cell interpolation flag in the input file (0 == known value, 1 == interpolated/to interpolate cell). If not set, it will interpolate the locations in the elevation variable containing an invalid (NaN) value.")
+                        help="Name of the variable storing the elevation grid in the OUTPUT file.")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,
                         help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")
     parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
@@ -287,7 +317,7 @@ def parse_args(args=None):
     
 
 def main():
-    interpolate(parse_args())
+    rasterize(parse_args())
 
 
 # Main function
