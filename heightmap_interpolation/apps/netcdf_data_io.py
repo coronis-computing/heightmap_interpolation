@@ -23,7 +23,8 @@ import geopandas as gpd
 import shutil
 import cv2
 from shapely.geometry import Point
-gpd.io.file.fiona.drvsupport.supported_drivers['KML'] = 'rw'
+from fiona.drvsupport import supported_drivers
+supported_drivers['KML'] = 'rw'
 
 
 def imageToArray(i):
