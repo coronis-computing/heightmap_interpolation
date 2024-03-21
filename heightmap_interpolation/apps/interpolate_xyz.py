@@ -80,6 +80,29 @@ def load_interpolation_input_data_xyz(input_file, separator, raster_step, min_la
 
     return lons, lats, elev, lats_mat, lons_mat, elevation, work_areas
 
+
+def samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation):
+    lats_1d = lats_mat[:, 0]
+    lons_1d = lons_mat[0, :]
+
+    accum = np.zeros_like(elevation)
+    num_elems = np.zeros_like(elevation)
+    for lon, lat, elev in zip(lons_ref, lats_ref, elevation_ref):
+        lon_ind = find_nearest_ind(lons_1d, lon)
+        lat_ind = find_nearest_ind(lats_1d, lat)
+        accum[lon_ind, lat_ind] += elev
+        num_elems[lon_ind, lat_ind] += 1
+    
+    return accum/num_elems
+
+
+def find_nearest_ind(array, value):
+    # Modified version of the snippet in: https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array (answer by Demitri)
+    idx = np.searchsorted(array, value, side="left")
+    if idx > 0 and (idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx])):
+        return idx-1
+    else:
+        return idx
     
 
 def rasterize(params):
@@ -214,7 +237,7 @@ def rasterize(params):
         # --- Gridded data interpolation/inpainting ---
         gridded_methods = ['harmonic', 'tv', 'ccst', 'amle', 'navier-stokes', 'telea', 'shiftmap']
         if params.subparser_name.lower() in gridded_methods:
-             = samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation)
+            elevation = samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation)
 
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
