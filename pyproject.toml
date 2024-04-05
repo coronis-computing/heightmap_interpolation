@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heightmap_interpolation"
+version = "1.0.1"
+authors = [
+  { name="Ricard Campos", email="ricard.campos@coronis.es" },
+]
+description = "Interpolation functions for heightmaps developed within the EMODnet Bathymetry (High Resolution Seabed Mapping) project."
+readme = "Readme.md"
+license = { file="LICENSE" }
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+    "Natural Language :: English"
+]
+dependencies = [
+    'packaging>=21.0',
+    'matplotlib>=3.5.0b1',
+    'numpy>=1.20.3',
+    'haversine>=2.5.1',
+    'scipy>=1.7.1',
+    'netCDF4>=1.5.7',
+    'geopy>=2.2.0',
+    'pandas>=1.3.2',
+    'geopandas>=0.9.0',
+    'opencv-python>=4.5.3.56',
+    'opencv-contrib-python>=4.5.3.56',
+    'numba>=0.54.1',
+    'psutil>=5.8.0',
+    'pyproj>=3.2.0'
+]
+
+[tool.setuptools]
+include-package-data=true
+
+[tool.setuptools.packages.find]
+where=["."]
+
+[project.scripts]
+interpolate_netcdf4 = "heightmap_interpolation.apps.interpolate_netcdf4:main"

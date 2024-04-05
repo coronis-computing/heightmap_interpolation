@@ -23,7 +23,8 @@ import geopandas as gpd
 import shutil
 import cv2
 from shapely.geometry import Point
-gpd.io.file.fiona.drvsupport.supported_drivers['KML'] = 'rw'
+from fiona.drvsupport import supported_drivers
+supported_drivers['KML'] = 'rw'
 
 
 def imageToArray(i):
@@ -95,10 +96,12 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         types = df.geom_type
         for ind in range(len(types)):
             type = types[ind]
-            if type == 'Polygon':
-                polys.append(df.geometry[ind])
-            elif type == 'MultiPolygon':
-                polys.extend(df.geometry[ind].geoms)
+            poly = df.geometry[ind]
+            if not poly.is_empty:
+                if type == 'Polygon':
+                    polys.append(poly)
+                elif type == 'MultiPolygon':
+                    polys.extend(poly.geoms)
 
         # Create an array of work areas, each 3rd dimension plane represents a mask delimiting the working area
         work_areas = np.full((elevation.shape[0], elevation.shape[1], len(polys)), False)
@@ -126,8 +129,8 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
             x, y = poly.exterior.coords.xy
 
             # Convert the coordinates to pixels (assuming all in the same CRS)
-            x = np.round((x - xmin) / xres).astype(np.int)
-            y = np.round((y - ymin) / yres).astype(np.int)
+            x = np.round((x - xmin) / xres).astype(np.int32)
+            y = np.round((y - ymin) / yres).astype(np.int32)
 
             poly_points_cv = np.zeros((len(x), 2))
             for p in range(len(x)):                                                                                                                                                                                                                                                                     
@@ -188,7 +191,25 @@ def write_interpolation_results(input_file, output_file, elevation, mask_int, el
     if areas_kml_file or not interpolation_flag_var:
         # Also update the interpolated areas
         if "interpolation_flag" not in out_ds.variables.keys():
-            out_ds.createVariable('interpolation_flag', 'int8', ('lat', 'lon'))
+
+            # retrieve compression parameters
+            elev_var = out_ds.variables[elevation_var]
+            complib = "zlib" if elev_var.filters() is not None and elev_var.filters().get("zlib", False) else None
+            complevel = elev_var.filters().get("complevel", 0) if elev_var.filters() is not None else 0
+            chunksizes = (
+                tuple(elev_var.chunking())
+                if elev_var.chunking() is not None and elev_var.chunking() != "contiguous"
+                else None
+            )
+
+            out_ds.createVariable(
+                "interpolation_flag",
+                "int8",
+                ("lat", "lon"),
+                compression=complib,
+                complevel=complevel,
+                chunksizes=chunksizes,
+            )
             new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
             new_cell_interpolated_flag[~mask_int] = 0
         else:

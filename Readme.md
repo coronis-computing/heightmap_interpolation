@@ -6,7 +6,13 @@ Please visit the documentation at: https://emodnet-heightmap-interpolation.readt
 
 ## Installation
 
-This package and all its requirements can be installed through `setuptools` using:
+This package is available through [PyPI](https://pypi.org/project/heightmap-interpolation/):
+
+```
+pip install heightmap-interpolation
+```
+
+Otherwise, the package and all its requirements can be installed from sources through `setuptools` using:
 
 ```
 python setup.py install 
@@ -20,18 +26,18 @@ If you prefer to install it in a virtual environment:
 python3.7 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-python3.7 setup.py install
+pip install .
 ```
-
-For convenience, after installation, we recommend to put the main script of the package within the path:
-
- 
 
 ## Usage
 
-As mentioned above, the main entry point for interpolating NetCDF4 datasets is the `interpolate_netcdf4.py` script.
+After installation, you should have the main entry point for interpolating NetCDF4 datasets already in the path, so you can call:
 
-Since this package was developed within the EMODnet Bathymetry project, for the moment no other inputs are expected. For other inputs, take the code in this script as reference and use directly the different interpolation modules at your convenience. 
+```
+interpolate_netcdf4 --help
+```
+
+Since this package was developed within the EMODnet Bathymetry project, for the moment no other inputs are expected. For other inputs, take the code in the `apps/interpolate_netcdf4.py` script as reference and use directly the different interpolation modules at your convenience. 
 
 ## Docker
 
@@ -52,14 +58,15 @@ docker build -t <image_tag_name> .
 Then, run it with:
 
 ```
-docker run -it --user $(id -u):$(id -g) -v <data_folder>:/data coroniscomputing/heightmap_interpolation:<tag_name>
+docker run -it -v <data_folder>:/data coroniscomputing/heightmap_interpolation:<tag_name>
 ```
 
-On the one hand, using the `-v` flag we are mounting the directory containing the data to process to the `/data` folder within the container. On the other hand, the `--user $(id -u):$(id -g)` part is to achieve that the files you generate within docker in the mounted volume are owned by your user (otherwise they would be owned by the *root* user!). 
-The container will automatically run the `bash` command, and you will be inside the container. Thus, there we simply run the `interpolate_netcdf4.py` script with the desired parameters (it is included in the container's path, so you can call it directly). For instance:
+On the one hand, using the `-v` flag we are mounting the directory containing the data to process to the `/data` folder within the container. The container will automatically run the `bash` command, and you will be inside the container. Thus, there we simply run the `interpolate_netcdf4` script with the desired parameters
+
+For instance:
 
 ```
-interpolate_netcdf4.py -o /data/<netcdf_results_file> linear /data/<netcdf_input_file>
+interpolate_netcdf4 -o /data/<netcdf_results_file> linear /data/<netcdf_input_file>
 ```  
 
 Keep in mind that this way of running the docker does not provide visualization, so the "--show" flag will be useless! There are ways of sharing the Xs with docker, but these are out of the scope of this documentation.

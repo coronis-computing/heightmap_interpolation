@@ -1,13 +1,18 @@
 Installation
 ============
 
+This package is available through `PyPI <https://pypi.org/project/heightmap-interpolation/>`_, so it can be installed through ``pip``::
+
+    pip install heightmap-interpolation
+
+Installation from sources
+=========================
+
 This project expects python3.7 (or above).
 
 Start by cloning the project: ::
 
     git clone https://github.com/coronis-computing/heightmap_interpolation.git
-
-
 
 We provide the requirements of this project in a "requirements.txt"
 
