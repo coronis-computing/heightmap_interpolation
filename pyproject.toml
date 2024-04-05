@@ -44,3 +44,5 @@ where=["."]
 
 [project.scripts]
 interpolate_netcdf4 = "heightmap_interpolation.apps.interpolate_netcdf4:main"
+interpolate_xyz = "heightmap_interpolation.apps.interpolate_xyz:main"
+randomly_sample_xyz_from_netcdf4 = "heightmap_interpolation.apps.randomly_sample_xyz_from_netcdf4:main"
