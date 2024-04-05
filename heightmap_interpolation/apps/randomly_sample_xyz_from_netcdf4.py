@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import netCDF4 as nc
+import matplotlib.pyplot as plt
 
 
 def create_sample(params):
@@ -10,14 +11,30 @@ def create_sample(params):
     lats_1d = ds.variables["lat"][:]
     lons_1d = ds.variables["lon"][:]
 
-    # Take random samples
-    xs = np.choice(elevation.size[0], params.num_samples)
-    ys = np.choice(elevation.size[1], params.num_samples)
+    valid_pts = np.argwhere(~np.isnan(elevation))
 
-    samples = np.zeros((len(xs), 3))
-    for i, x, y in zip(range(params.num_samples), xs, ys):
-        samples[i, :] = [lons_1d[x], lats_1d[y], elevation[x, y]]
+    # Take random samples
+    valid_pts_inds = np.random.choice(valid_pts.shape[0], params.num_samples)
     
+    samples = np.zeros((len(valid_pts_inds), 3))    
+    for i, ind in zip(range(params.num_samples), valid_pts_inds):
+        x = valid_pts[ind, 1]
+        y = valid_pts[ind, 0]
+        samples[i, :] = [lons_1d[x], lats_1d[y], elevation[y, x]]        
+
+    # Show sample
+    if params.show:
+        lons_selected = np.zeros(params.num_samples)
+        lats_selected = np.zeros(params.num_samples)
+        for i, ind in zip(range(params.num_samples), valid_pts_inds):
+            x = valid_pts[ind, 1]
+            y = valid_pts[ind, 0]
+            lons_selected[i] = lons_1d[x]
+            lats_selected[i] = lats_1d[y]
+        print("Showing the samples taken, close the window to continue...")
+        plt.scatter(lons_selected.T, lats_selected.T)
+        plt.show(block=True)        
+
     # Write to file
     np.savetxt(params.output_file, samples)
 
@@ -29,8 +46,10 @@ def parse_args(args=None):
                         help="Input NetCDF file")
     parser.add_argument("-o","--output_file", dest="output_file", action="store", type=str,
                         help="Output NetCDF file with interpolated values")
-    parser.add_argument("-n","--num_samples", dest="num_samples", action="store", type=str,
+    parser.add_argument("-n","--num_samples", dest="num_samples", action="store", type=int,
                         help="Number of random samples to draw from the input dataset")
+    parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
+                        help="Show a 2D plot of the sample points")
     parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
                         help="Name of the variable storing the elevation grid in the input file.")
     return parser.parse_args(args)

@@ -119,6 +119,39 @@ def write_interpolation_results(input_file, output_file, elevation, mask_int, el
     out_ds.close()
 
 
+def write_interpolation_results_new_file(output_file, elevation, mask_int, lats, lons, elevation_var_name, interpolation_flag_var_name):
+    # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
+    # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
+    # variable
+    
+    # Open the output dataset for writing
+    out_ds = nc.Dataset(output_file, "w", format='NETCDF4')
+
+    # Create the dimensions (lat/lon)
+    lat_dim = out_ds.createDimension('lat', len(lats))     # latitude axis
+    lon_dim = out_ds.createDimension('lon', len(lons))
+
+    # Create attributes
+    out_ds.flag_values = np.array([0, 1], dtype=np.int16)
+    out_ds.flag_meaning = "not_interpolated interpolated"
+
+    # Create variables
+    lat = out_ds.createVariable('lat', np.float64, ('lat',))
+    lat.units = 'degrees_north'
+    lat.long_name = 'latitude'
+    lat[:] = lats
+    lon = out_ds.createVariable('lon', np.float64, ('lon',))
+    lon.units = 'degrees_east'
+    lon.long_name = 'longitude'
+    lon[:] = lons
+    elevation_var = out_ds.createVariable(elevation_var_name, np.float64, ('lat', 'lon'))
+    elevation_var[:, :] = elevation
+    interpolation_flag_var = out_ds.createVariable(interpolation_flag_var_name, 'int8', ('lat', 'lon'))
+    interpolation_flag_var[:, :] = mask_int
+
+    out_ds.close()
+
+
 def create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d):
         # Are we using a KML to restrict the interpolation?
     if areas_kml_file:
