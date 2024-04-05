@@ -28,7 +28,7 @@ import numpy as np
 from heightmap_interpolation.inpainting.initializer import Initializer
 from heightmap_interpolation.inpainting.convolver import Convolver
 from heightmap_interpolation.inpainting.update_at_mask import update_at_mask
-
+from heightmap_interpolation.misc.image_proc import halve_image
 
 class FDPDEInpainter(ABC):
     """Abstract base class for Finite-Differences Partial Differential Equation (FDPDE) Inpainters
@@ -37,8 +37,8 @@ class FDPDEInpainter(ABC):
 
         Attributes:
             dt (float): Gradient descent step size.
-            rel_change_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
-            rel_change_tolerance (float): Stop the optimization when the energy descent between iterations is less than
+            term_check_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
+            term_thres (float): Stop the optimization when the energy descent between iterations is less than
             max_iters (int): Maximum number of iterations for the optimizer.
             relaxation (float): Over-relaxation parameter. It is still under testing, use with care.
             mgs_levels (int): Number of levels of detail to use in the Mult-Grid Solver (MGS). Setting it to 1 deactivates the MGS.
@@ -54,8 +54,8 @@ class FDPDEInpainter(ABC):
 
         Keyword Args:
             dt (float): Gradient descent step size.
-            rel_change_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
-            rel_change_tolerance (float): Stop the optimization when the energy descent between iterations is less than
+            term_check_iters (int): Check the relative change between iterations of the optimizer every this number of iterations.
+            term_thres (float): Stop the optimization when the energy descent between iterations is less than
             max_iters (int): Maximum number of iterations for the optimizer.
             relaxation (float): Over-relaxation parameter. It is still under testing, use with care.
             mgs_levels (int): Number of levels of detail to use in the Mult-Grid Solver (MGS). Setting it to 1 deactivates the MGS.
@@ -69,8 +69,8 @@ class FDPDEInpainter(ABC):
         super().__init__()
         # --- Gather and check the input parameters ---
         self.dt = kwargs.pop("update_step_size", 0.01)
-        self.rel_change_iters = kwargs.pop("rel_change_iters", 1000)
-        self.rel_change_tolerance = kwargs.pop("rel_change_tolerance", 1e-8)
+        self.term_check_iters = kwargs.pop("term_check_iters", 1000)
+        self.term_thres = kwargs.pop("term_thres", 1e-8)
         self.max_iters = int(kwargs.pop("max_iters", 1e8))
         self.relaxation = kwargs.pop("relaxation", 0)
         self.print_progress = kwargs.pop("print_progress", False)
@@ -81,12 +81,13 @@ class FDPDEInpainter(ABC):
         self.convolver_type = kwargs.pop("convolver", "masked")
         self.convolver = Convolver(self.convolver_type)
         self.debug_dir = kwargs.pop("debug_dir", "")
+        self.term_criteria = kwargs.pop("term_criteria", "relative")
         self.ts = 0 # ts is just a timer used to print the execution time of some of the steps
 
         if self.dt <= 0:
             raise ValueError("update_step_size must be larger than zero")
-        if self.rel_change_tolerance <= 0:
-            raise ValueError("rel_change_tolerance must be larger than zero")
+        if self.term_thres <= 0:
+            raise ValueError("term_thres must be larger than zero")
         if self.max_iters <= 0:
             raise ValueError("max_iters must be larger than zero")
         if self.relaxation != 0.0 and (self.relaxation < 1.0 or self.relaxation > 2.0):
@@ -98,11 +99,17 @@ class FDPDEInpainter(ABC):
         if not isinstance(self.mgs_min_res, int):
             raise ValueError("mgs_min_res must be an integer")
 
+        self.map_term_criteria_str_to_int = {
+            "relative": 0,
+            "absolute": 1,
+            "absolute_percent": 2
+        }
+        
         # Some convenience variables to print progress
-        #decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance) # DevNote: this does not work as expected yet...
+        #decimal_places_to_show = self.get_decimal_places(self.term_thres) # DevNote: this does not work as expected yet...
         decimal_places_to_show = 10
-        self.print_progress_table_row_str = "|{:>11d}|{:>" + str(26) + "." + str(decimal_places_to_show) + "f}|"
-        self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(26) + "." + str(
+        self.print_progress_table_row_str = "|{:>11d}|{:>" + str(17) + "." + str(decimal_places_to_show) + "f}|"
+        self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(17) + "." + str(
             decimal_places_to_show) + "f}|"
 
         # Create the debug dir, if needed
@@ -117,8 +124,9 @@ class FDPDEInpainter(ABC):
     def get_config(self):
         # Convert the internal configuration of the inpainter into a dictionary
         config = {"update_step_size": self.dt,
-                  "rel_change_iters": self.rel_change_iters,
-                  "rel_change_tolerance": self.rel_change_tolerance,
+                  "term_criteria": self.term_criteria,  
+                  "term_check_iters": self.term_check_iters,
+                  "term_thres": self.term_thres,
                   "max_iters": self.max_iters,
                   "relaxation": self.relaxation,
                   "print_progress": self.print_progress,
@@ -127,7 +135,27 @@ class FDPDEInpainter(ABC):
                   "mgs_min_res": self.mgs_min_res,
                   "init_with": self.init_with,
                   "convolver": self.convolver_type}
+        
         return config
+
+    def set_term_criteria(self, f):
+        self.term_criteria_int = self.map_term_criteria_str_to_int.get(self.term_criteria, -1)
+        if self.term_criteria_int == 0:
+            self.print_msg("* Termination criteria --> relative change = {:f}".format(self.term_thres))
+        elif self.term_criteria_int == 1:
+            self.print_msg("* Termination criteria --> absolute change = {:f}".format(self.term_thres))
+        elif self.term_criteria_int == 2:
+            # Adapt the termination threshold based on the range of depth values on the map 
+            max_val = np.max(f)
+            min_val = np.min(f)
+            z_range = abs(max_val-min_val)
+            self.print_msg("* Termination criteria --> absolute percent change:")
+            self.print_msg(f"    - Abs. Z range: {z_range:f}")
+            self.print_msg(f"    - Percent = {self.term_thres:f}")
+            self.term_thres = z_range*self.term_thres
+            self.print_msg(f"    - Terminate if absolute change < {self.term_thres:f}")
+        else:
+            raise ValueError("Unknown termination criteria!")
 
     def inpaint(self, image, mask):
         # Inpainting of an "image" by iterative minimization of a PDE functional.
@@ -186,9 +214,11 @@ class FDPDEInpainter(ABC):
                 num_levels = level
                 break
             dim = (width, height)
-            image_rs = cv2.resize(image_pyramid[level-1], dim)
+            #image_rs = cv2.resize(image_pyramid[level-1], dim)
+            image_rs = halve_image(image_pyramid[level-1])
             image_pyramid.append(image_rs)
-            mask_rs = cv2.resize(np.asarray(mask_pyramid[level-1], dtype="uint8"), dim) == 1
+            #mask_rs = cv2.resize(np.asarray(mask_pyramid[level-1], dtype="uint8"), dim, interpolation=cv2.INTER_NEAREST) == 1
+            mask_rs = halve_image(np.asarray(mask_pyramid[level-1], dtype="uint8"))
             # Special case! If the image contains nans, resizing may increase those nans out of the resized mask, so we extend it to include the positions which are NaN in the image
             mask_valid = ~np.isnan(image_rs)
             mask_rs = np.logical_and(mask_rs, mask_valid)
@@ -207,12 +237,16 @@ class FDPDEInpainter(ABC):
             plt.savefig(os.path.join(self.current_level_debug_dir, "initialization.png"), bbox_inches="tight")
         self.print_end()
         self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels-1))
+        original_term_thres = self.term_thres
+        self.term_thres = original_term_thres*2**(num_levels)
         inpainted_lower_scale = self.inpaint_grid(init_lower_scale, mask_pyramid[num_levels-1] > 0)
         self.print_end()
         if num_levels == 1:
-            return inpainted_lower_scale
+            return inpainted_lower_scale        
         for level in range(num_levels-2, -1, -1):
             self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(level))
+
+            self.term_thres = original_term_thres*2**level
 
             image = image_pyramid[level]
             mask = mask_pyramid[level]
@@ -269,6 +303,8 @@ class FDPDEInpainter(ABC):
         f = image
         #f[~mask] = 0 # Just in case the values not filled in the image are NaNs!
 
+        self.set_term_criteria(f)
+
         # Iterate
         diff = 100000
         # last_diff = 0
@@ -283,20 +319,19 @@ class FDPDEInpainter(ABC):
 
             # Compute the difference with the previous step
             # This is a costly operation, do it every now and then:
-            if i % self.rel_change_iters == 0:
-                # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
-                diff = self.fast_norm(fnew.flatten() - f.flatten()) / self.fast_norm(fnew.flatten())
+            if i % self.term_check_iters == 0:
+                terminate, diff = self.term_check(f, fnew)
 
             # Update the function
             f = fnew            
 
             if self.print_progress and i % self.print_progress_iters == 0:
                 if i == 0:
-                    print("+-----------+--------------------------+")
-                    print("| Iteration | Function relative change |")
-                    print("+-----------+--------------------------+")
+                    print("+-----------+-----------------+")
+                    print("| Iteration | Function change |")
+                    print("+-----------+-----------------+")
                 # print("Iter. %d, function relative change = %.10f" % (i, diff))
-                # print(("|{:<11d}|{:>" + str(self.get_decimal_places(self.rel_change_tolerance)) + "f}|").format(i, diff))
+                # print(("|{:<11d}|{:>" + str(self.get_decimal_places(self.term_thres)) + "f}|").format(i, diff))
                 print(self.print_progress_table_row_str.format(i, diff))
 
             if self.debug_dir and i % self.print_progress_iters == 0:
@@ -304,17 +339,18 @@ class FDPDEInpainter(ABC):
                 plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
 
             #  % Stop if "almost" no change
-            if i % self.rel_change_iters == 0 and diff < self.rel_change_tolerance:
+            if i % self.term_check_iters == 0 and terminate:
+                 
                 if self.print_progress:
-                    print("+-----------+--------------------------+")
+                    print("+-----------+-----------------+")
                     print(self.print_progress_last_table_row_str.format(diff))
-                    print("+-----------+--------------------------+")
+                    print("+-----------+-----------------+")
                 if self.debug_dir:
                     imgplot = plt.imshow(f)
                     plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(i)), bbox_inches="tight")
                 return f
 
-            # if i % self.rel_change_iters == 0:
+            # if i % self.term_check_iters == 0:
             #     last_diff = diff
 
             # Check for increasing relative changes... should not happen in a convex optimization!
@@ -328,6 +364,20 @@ class FDPDEInpainter(ABC):
         print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
 
         return f
+
+    def term_check(self, f, fnew):
+        if self.term_criteria_int == 0: 
+            # Relative change
+            # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
+            diff = self.fast_norm(fnew.flatten() - f.flatten()) / self.fast_norm(fnew.flatten())
+        elif self.term_criteria_int == 1 or self.term_criteria_int == 2:
+            # Absolute change
+            diff = np.max(np.abs(fnew.flatten() - f.flatten())) 
+        else:
+            raise RuntimeError("Invalid termination criteria!")
+        terminate = diff < self.term_thres
+        return terminate, diff
+
 
     def fast_norm(self, vector):
         return np.sqrt(np.sum(np.square(vector)))

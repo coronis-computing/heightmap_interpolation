@@ -41,8 +41,9 @@ class TaichiCCSTInpainter():
         super().__init__()
         # --- Gather and check the input parameters ---
         self.dt = kwargs.pop("update_step_size", 0.01)
-        self.rel_change_iters = kwargs.pop("rel_change_iters", 1000)
-        self.rel_change_tolerance = kwargs.pop("rel_change_tolerance", 1e-8)
+        self.term_check_iters = kwargs.pop("term_check_iters", 1000)
+        self.term_criteria = kwargs.pop("term_criteria", "relative")
+        self.term_thres = kwargs.pop("term_thres", 1e-8)        
         self.max_iters = int(kwargs.pop("max_iters", 1e8))
         self.relaxation = kwargs.pop("relaxation", 0)
         self.print_progress = kwargs.pop("print_progress", False)
@@ -59,8 +60,8 @@ class TaichiCCSTInpainter():
         
         if self.dt <= 0:
             raise ValueError("update_step_size must be larger than zero")
-        if self.rel_change_tolerance <= 0:
-            raise ValueError("rel_change_tolerance must be larger than zero")
+        if self.term_thres <= 0:
+            raise ValueError("term_thres must be larger than zero")
         if self.max_iters <= 0:
             raise ValueError("max_iters must be larger than zero")
         if self.relaxation != 0.0 and (self.relaxation < 1.0 or self.relaxation > 2.0):
@@ -74,10 +75,16 @@ class TaichiCCSTInpainter():
         if self.tension < 0. or self.tension > 1.:
             raise ValueError("tension parameter must be a number between 0 and 1 (included)")
 
+        self.map_term_criteria_str_to_int = {
+            "relative": 0,
+            "absolute": 1,
+            "absolute_percent": 2
+        }
+
         # Some convenience variables to print progress
         #decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance) # DevNote: this does not work as expected yet...
         decimal_places_to_show = 10
-        self.print_progress_table_row_str = "|{:11d}|{:" + str(26) + "." + str(decimal_places_to_show) + "f}|"
+        self.print_progress_table_row_str = "|{:>11d}|{:>" + str(17) + "." + str(decimal_places_to_show) + "f}|"
         self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(26) + "." + str(
             decimal_places_to_show) + "f}|"
 
@@ -111,8 +118,9 @@ class TaichiCCSTInpainter():
     def get_config(self):
         # Convert the internal configuration of the inpainter into a dictionary
         config = {"update_step_size": self.dt,
-                  "rel_change_iters": self.rel_change_iters,
-                  "rel_change_tolerance": self.rel_change_tolerance,
+                  "term_criteria": self.term_criteria,  
+                  "term_check_iters": self.term_check_iters,
+                  "term_thres": self.term_thres,
                   "max_iters": self.max_iters,
                   "relaxation": self.relaxation,
                   "print_progress": self.print_progress,
@@ -122,6 +130,25 @@ class TaichiCCSTInpainter():
                   "init_with": self.init_with,
                   "convolver": self.convolver_type}
         return config
+
+    def set_term_criteria(self):
+        self.term_criteria_int = self.map_term_criteria_str_to_int.get(self.term_criteria, -1)
+        if self.term_criteria_int == 0:
+            self.print_msg("* Termination criteria --> relative change = {:f}".format(self.term_thres))
+        elif self.term_criteria_int == 1:
+            self.print_msg("* Termination criteria --> absolute change = {:f}".format(self.term_thres))
+        elif self.term_criteria_int == 2:
+            # Adapt the termination threshold based on the range of depth values on the map 
+            max_val = np.max(self.f.to_numpy())
+            min_val = np.min(self.f.to_numpy())
+            z_range = abs(max_val-min_val)
+            self.print_msg("* Termination criteria --> absolute percent change:")
+            self.print_msg(f"    - Abs. Z range: {z_range:f}")
+            self.print_msg(f"    - Percent = {self.term_thres:f}")
+            self.term_thres = z_range*self.term_thres
+            self.print_msg(f"    - Terminate if absolute change < {self.term_thres:f}")
+        else:
+            raise ValueError("Unknown termination criteria!")
 
     def inpaint(self, image, mask):
         # Inpainting of an "image" by iterative minimization of a PDE functional.
@@ -282,6 +309,9 @@ class TaichiCCSTInpainter():
         # self.fnew = ti.field(dtype=ti.f32, shape=(h, w))
         # self.fnew.from_numpy(f_np) 
 
+        # Set the termination criteria
+        self.set_term_criteria()
+
         # Inpaint!
         self.inpaint_loop_2()
 
@@ -339,25 +369,22 @@ class TaichiCCSTInpainter():
         # Iterate until convergence (or max number of iterations reached)
         iter = 0
         converged = False
-        print("+-----------+--------------------------+")
-        print("| Iteration | Function relative change |")
-        print("+-----------+--------------------------+")
+        print("+-----------+-----------------+")
+        print("| Iteration | Function change |")
+        print("+-----------+-----------------+")
         if self.debug_dir:
             imgplot = plt.imshow(self.f.to_numpy())
             plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)), bbox_inches="tight")
         while not converged and iter < self.max_iters:
-            for i in range(self.rel_change_iters-1):
+            for i in range(self.term_check_iters):
                 self.update()
             self.fprev.copy_from(self.f)
             self.update()
-            diff = self.step_diff()
-            converged = diff < self.rel_change_tolerance
-            iter = iter + self.rel_change_iters
+            # diff = self.step_diff()
+            converged, diff = self.term_check()
+            
+            iter = iter + self.term_check_iters
             if self.print_progress and iter % self.print_progress_iters == 0:
-                if iter == 0:
-                    print("+-----------+--------------------------+")
-                    print("| Iteration | Function relative change |")
-                    print("+-----------+--------------------------+")
                 print(self.print_progress_table_row_str.format(iter, diff))
                 if self.debug_dir:
                     imgplot = plt.imshow(self.f.to_numpy())
@@ -366,9 +393,22 @@ class TaichiCCSTInpainter():
         if iter >= self.max_iters:
             print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
         else:
-            print("+-----------+--------------------------+")
+            print("+-----------+-----------------+")
             print(self.print_progress_last_table_row_str.format(diff))
-            print("+-----------+--------------------------+")
+            print("+-----------+-----------------+")
+
+    def term_check(self):
+        if self.term_criteria_int == 0: 
+            # Relative change
+            # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
+            diff = self.step_rel_diff()
+        elif self.term_criteria_int == 1 or self.term_criteria_int == 2:
+            # Absolute change
+            diff = self.step_abs_diff()
+        else:
+            raise RuntimeError("Invalid termination criteria!")
+        terminate = diff < self.term_thres
+        return terminate, diff
 
     # @ti.kernel
     # def inpaint_step(self, iter: ti.types.i32) -> ti.types.i32:
@@ -391,7 +431,7 @@ class TaichiCCSTInpainter():
                 #     self.fnew[i] = self.pi_fun(self.f[i] * (1 - self.relaxation) + self.fnew[i] * self.relaxation)
     
     @ti.kernel
-    def step_diff(self) -> ti.types.f32:
+    def step_rel_diff(self) -> ti.types.f32:
         diff_fprev_sq_sum = 0.0
         fprev_sq_sum = 0.0
         for i in ti.grouped(self.f):
@@ -404,6 +444,15 @@ class TaichiCCSTInpainter():
         norm_fprev = ti.sqrt(fprev_sq_sum)
         diff = norm_diff_fprev/norm_fprev
         return diff
+    
+    @ti.kernel
+    def step_abs_diff(self) -> ti.types.f32:
+        max_abs_diff = 0.0
+        for i in ti.grouped(self.f):
+            val = abs(self.f[i]-self.fprev[i])
+            if val > max_abs_diff:
+                max_abs_diff = val        
+        return max_abs_diff
 
     @ti.kernel
     def update_f(self):

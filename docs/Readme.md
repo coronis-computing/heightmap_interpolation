@@ -3,7 +3,7 @@
 Setting up the environment:
 
 ```
-python3.9 -m venv docs_venv
+python3.10 -m venv docs_venv
 source docs_venv/bin/activate
 sphinx-quickstart
 ```

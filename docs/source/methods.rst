@@ -159,7 +159,7 @@ Disadvantages
 Radial Basis Functions
 ----------------------
 
-A Radial Basis Funcion (RBF) is a function whose value depends only on the distance between the input and some fixed point. The basic idea of a RBF interpolator is to construct an interpolant of the data using a summation of several RBF centered at the input reference data points. The formal definition is the following:
+A Radial Basis Function (RBF) is a function whose value depends only on the distance between the input and some fixed point. The basic idea of a RBF interpolator is to construct an interpolant of the data using a summation of several RBF centered at the input reference data points. The formal definition is the following:
 
 .. math:: s(x) = p(x) + \sum^{N}_{i=1} \lambda_i \phi(|x-x_i|)
 
@@ -381,8 +381,14 @@ Common Parameters
 The parameters that are common to all PDE-based interpolators affect the behaviour of the Finite-Differences solver:
 
 * ``--update_step_size`` (float): gradient descent step size. A default is provided by each method. However, depending on the problem, you could tune it to a higher value to speed-up convergence (but beware of overshooting and missing the minimum!).
-* ``--rel_change_tolerance`` (float): stop the optimization when the energy descent between iterations is less than this value.
-* ``--rel_change_iters`` (int): since checking for the termination criteria of ``--rel_change_tolerance`` is costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
+* ``--term_criteria`` (string): the termination criteria to use. Available:
+
+    - ``relative``: stop if the relative change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute``: stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute_percent`` (default): stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres`` multiplied by the absolute range of depths in the dataset (i.e., the absolute value is range_depths * absolute_change_percent).
+
+* ``--term_thres`` (float): stop the optimization when the energy descent between iterations is less than this value. Its meaning depends on ``--term_criteria``.
+* ``--term_check_iters`` (int): since checking for the termination criteria may be costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
 * ``--max_iters`` (int): maximum number of iterations for the optimizer (will end the optimization even if there is no convergence on the minimization).
 * ``--relaxation`` (float): over-relaxation parameter. *This paramter  is still under testing, use with care*.
 * ``--mgs_levels`` (int): number of levels of detail to use in the Mult-Grid Solver (MGS, see :ref:`inpainting_mgs`). Setting it to 1 deactivates the MGS.
@@ -414,7 +420,7 @@ This method has many analogies:
 * It can be seen as an "isotropic diffusion" of the elevation values at the borders surrounding the missing data towards the area to interpolate.
 * Its evolution follows the `heat diffusion equation <https://en.wikipedia.org/wiki/Heat_equation>`_.
 * It minimizes the Sobolev norm on the grid, constrained to the input reference data.
-* The interpolated surface is a "minimum energy surface", and many times it is described as the "shape a film of soap would take if layed over the data points".
+* The interpolated surface is a "minimum energy surface", and many times it is described as the "shape a film of soap would take if laid over the data points".
 
 Parameters
 ++++++++++
@@ -572,7 +578,7 @@ Suitable for
 ++++++++++++
 
 * Interpolating gaps in terrain data using a better interpolant, but trying not to overshoot the original data.
-* Scattered data: this is the only approach that always takes into account scattered data properly (*ccst* with a tension apoaching 1 also does, but not so well if tension approaches 0...).
+* Scattered data: this is the only approach that always takes into account scattered data properly (*ccst* with a tension close to 1 also does, but not so well if tension approaches 0...).
 
 Advantages
 ++++++++++
