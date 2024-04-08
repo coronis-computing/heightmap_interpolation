@@ -31,13 +31,7 @@ from heightmap_interpolation.interpolants.linear_interpolant import LinearInterp
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import QuadTreePURBFInterpolant
-from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
-from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
-from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
-from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
-from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
-from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVXPhotoInpainter
-from heightmap_interpolation.apps.apps_common import add_common_fd_pde_inpainters_args, get_common_fd_pde_inpainters_params_from_args, add_inpainting_subparsers
+from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_inpainting_subparsers
 from heightmap_interpolation.apps.netcdf_data_io import create_work_areas, write_interpolation_results_new_file
 
 def load_interpolation_input_data_xyz(input_file, separator, raster_step, min_lat = np.NAN, max_lat = np.NAN, min_lon = np.NAN, max_lon = np.NAN, areas_kml_file=None):
