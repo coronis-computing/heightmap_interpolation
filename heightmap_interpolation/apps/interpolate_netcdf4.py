@@ -32,16 +32,7 @@ from heightmap_interpolation.interpolants.linear_interpolant import LinearInterp
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import QuadTreePURBFInterpolant
-from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
-from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
-from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
-from heightmap_interpolation.inpainting.taichi_ccst_inpainter import TaichiCCSTInpainter
-from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
-from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
-from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVXPhotoInpainter
-
-
-from heightmap_interpolation.apps.apps_common import add_common_fd_pde_inpainters_args, get_common_fd_pde_inpainters_params_from_args, add_inpainting_subparsers
+from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_inpainting_subparsers
 
 
 def interpolate(params):
@@ -206,31 +197,7 @@ def interpolate(params):
                 condp.print("    - Number of cells to interpolate = {:d}".format(np.count_nonzero(~cur_inpaint_mask)))
 
             # Create the inpainter
-            if params.subparser_name.lower() == "harmonic":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                inpainter = SobolevInpainter(**options)
-            elif params.subparser_name.lower() == "tv":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["epsilon"] = params.epsilon
-                inpainter = TVInpainter(**options)
-            elif params.subparser_name[0:4].lower() == "ccst":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["tension"] = params.tension
-                if len(params.subparser_name) > 4 and params.subparser_name[4:] == "-ti":
-                    options["ti_arch"] = params.ti_arch
-                    inpainter = TaichiCCSTInpainter(**options)                    
-                else:
-                    inpainter = CCSTInpainter(**options)
-            elif params.subparser_name.lower() == "amle":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["convolve_in_1d"] = params.convolve_in_1d
-                inpainter = AMLEInpainter(**options)
-            elif params.subparser_name.lower() == "navier-stokes":
-                inpainter = OpenCVInpainter(method="navier-stokes", radius=params.radius)
-            elif params.subparser_name.lower() == "telea":
-                inpainter = OpenCVInpainter(method="telea", radius=params.radius)
-            elif params.subparser_name.lower() == "shiftmap":
-                inpainter = OpenCVXPhotoInpainter(method="shiftmap")
+            inpainter = create_inpainter_from_params(params)
             # Inpaint!
             if params.verbose:
                 ts = timer()
@@ -262,7 +229,7 @@ def interpolate(params):
             ax.set_title(title)
             ax.set_axis_off()
         fig.tight_layout()
-        plt.show()
+        plt.show(block=True)
 
 
 def parse_args(args=None):

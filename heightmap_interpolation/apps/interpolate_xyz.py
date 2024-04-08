@@ -270,27 +270,7 @@ def rasterize(params):
                 condp.print("    - Number of cells to interpolate = {:d}".format(np.count_nonzero(~cur_inpaint_mask)))
 
             # Create the inpainter
-            if params.subparser_name.lower() == "harmonic":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                inpainter = SobolevInpainter(**options)
-            elif params.subparser_name.lower() == "tv":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["epsilon"] = params.epsilon
-                inpainter = TVInpainter(**options)
-            elif params.subparser_name.lower() == "ccst":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["tension"] = params.tension
-                inpainter = CCSTInpainter(**options)
-            elif params.subparser_name.lower() == "amle":
-                options = get_common_fd_pde_inpainters_params_from_args(params)
-                options["convolve_in_1d"] = params.convolve_in_1d
-                inpainter = AMLEInpainter(**options)
-            elif params.subparser_name.lower() == "navier-stokes":
-                inpainter = OpenCVInpainter(method="navier-stokes", radius=params.radius)
-            elif params.subparser_name.lower() == "telea":
-                inpainter = OpenCVInpainter(method="telea", radius=params.radius)
-            elif params.subparser_name.lower() == "shiftmap":
-                inpainter = OpenCVXPhotoInpainter(method="shiftmap")
+            inpainter = create_inpainter_from_params(params)
             # Inpaint!
             if params.verbose:
                 ts = timer()

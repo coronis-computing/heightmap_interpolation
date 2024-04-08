@@ -1,7 +1,7 @@
 from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
 from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
-from heightmap_interpolation.inpainting.taichi_ccst_inpainter import TaichiCCSTInpainter
+from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import TaichiCCSTInpainter
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 

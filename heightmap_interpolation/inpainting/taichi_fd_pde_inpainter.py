@@ -12,7 +12,7 @@ import heightmap_interpolation.inpainting.differential as diff
 
 
 @ti.data_oriented
-class TaichiCCSTInpainter():
+class TaichiFDPDEInpainter():
     """Taichi Lang implementation of the Continous Curvature Splines in Tension (CCST) inpainter
 
     Implements the method in:
@@ -40,6 +40,7 @@ class TaichiCCSTInpainter():
         """
         super().__init__()
         # --- Gather and check the input parameters ---
+        self.method = kwargs.pop("method", 0.01)
         self.dt = kwargs.pop("update_step_size", 0.01)
         self.term_check_iters = kwargs.pop("term_check_iters", 1000)
         self.term_criteria = kwargs.pop("term_criteria", "relative")
@@ -57,7 +58,7 @@ class TaichiCCSTInpainter():
         self.ts = 0 # ts is just a timer used to print the execution time of some of the steps
         self.tension = kwargs.pop("tension", 0.0)
         self.ti_arch = kwargs.pop("ti_arch", "gpu")
-        
+
         if self.dt <= 0:
             raise ValueError("update_step_size must be larger than zero")
         if self.term_thres <= 0:
@@ -85,7 +86,7 @@ class TaichiCCSTInpainter():
         #decimal_places_to_show = self.get_decimal_places(self.rel_change_tolerance) # DevNote: this does not work as expected yet...
         decimal_places_to_show = 10
         self.print_progress_table_row_str = "|{:>11d}|{:>" + str(17) + "." + str(decimal_places_to_show) + "f}|"
-        self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(26) + "." + str(
+        self.print_progress_last_table_row_str = "| CONVERGED |{:>" + str(17) + "." + str(
             decimal_places_to_show) + "f}|"
 
         # Create the debug dir, if needed
@@ -113,7 +114,7 @@ class TaichiCCSTInpainter():
 
         # Define Taichi constants 
         self.laplacian_kernel_2d_ti = ti.field(dtype=ti.f32, shape=(3, 3))
-        self.laplacian_kernel_2d_ti.from_numpy(diff.laplacian_kernel_2d)
+        self.laplacian_kernel_2d_ti.from_numpy(diff.laplacian_kernel_2d.astype(np.float32))
 
     def get_config(self):
         # Convert the internal configuration of the inpainter into a dictionary
@@ -313,6 +314,7 @@ class TaichiCCSTInpainter():
         self.set_term_criteria()
 
         # Inpaint!
+        # self.inpaint_loop()
         self.inpaint_loop_2()
 
         # Return the results
@@ -346,15 +348,14 @@ class TaichiCCSTInpainter():
             # Perform a step in the optimization
             #converged = self.inpaint_step(iter)
             self.update()
-            if iter % self.rel_change_iters == 0: 
-                diff = self.step_diff()
-                converged = diff < self.rel_change_tolerance
+            if iter % self.term_check_iters == 0: 
+                converged, diff = self.term_check()
             if self.print_progress and iter % self.print_progress_iters == 0:
                 if iter == 0:
-                    print("+-----------+--------------------------+")
-                    print("| Iteration | Function relative change |")
-                    print("+-----------+--------------------------+")
-                print(self.print_progress_table_row_str.format(iter, diff))
+                    print("+-----------+-----------------+")
+                    print("| Iteration | Function change |")
+                    print("+-----------+-----------------+")
+                    print(self.print_progress_table_row_str.format(iter, diff))
 
             if iter > 0 and (iter+1) % self.rel_change_iters == 0: 
                 # In the following iteration, we will have to check the relative change, so save the last value
@@ -383,7 +384,32 @@ class TaichiCCSTInpainter():
             # diff = self.step_diff()
             converged, diff = self.term_check()
             
-            iter = iter + self.term_check_iters
+            iter = iter + self.term_check_iters            
+            if self.print_progress and iter % self.print_progress_iters == 0:
+                print(self.print_progress_table_row_str.format(iter, diff))
+                if self.debug_dir:
+                    imgplot = plt.imshow(self.f.to_numpy())
+                    plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)), bbox_inches="tight")
+                
+        if iter >= self.max_iters:
+            print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
+        else:
+            print("+-----------+-----------------+")
+            print(self.print_progress_last_table_row_str.format(diff))
+            print("+-----------+-----------------+")
+
+    def inpaint_loop_no_out(self):
+        # Iterate until convergence (or max number of iterations reached)
+        iter = 0
+        converged = False                
+        while not converged and iter < self.max_iters:
+            for i in range(self.term_check_iters):
+                self.update()
+            self.fprev.copy_from(self.f)
+            self.update()
+            converged, diff = self.term_check()
+            
+            iter = iter + self.term_check_iters            
             if self.print_progress and iter % self.print_progress_iters == 0:
                 print(self.print_progress_table_row_str.format(iter, diff))
                 if self.debug_dir:
@@ -421,8 +447,9 @@ class TaichiCCSTInpainter():
         return convolve_taichi(img, img_out, self.laplacian_kernel_2d_ti)
 
     @ti.kernel
-    def update(self):        
-        self.ccst_step_fun()
+    def update(self):
+        # self.ccst_step_fun()
+        self.step_fun()
         for i in ti.grouped(self.f):        
             new_val = self.f[i] + self.dt*self.step_f[i]
             self.f[i] = self.pi_fun(new_val, i)
@@ -449,9 +476,8 @@ class TaichiCCSTInpainter():
     def step_abs_diff(self) -> ti.types.f32:
         max_abs_diff = 0.0
         for i in ti.grouped(self.f):
-            val = abs(self.f[i]-self.fprev[i])
-            if val > max_abs_diff:
-                max_abs_diff = val        
+            ti.atomic_max(max_abs_diff, abs(self.f[i]-self.fprev[i]))
+        
         return max_abs_diff
 
     @ti.kernel
@@ -462,6 +488,21 @@ class TaichiCCSTInpainter():
     @ti.func
     def pi_fun(self, val, i):
         return val*self.mask_inv[i] + self.image[i]*self.mask[i]
+
+    @ti.func
+    def step_fun(self):
+        if ti.static(self.method == "ccst"):
+            self.ccst_step_fun()
+        elif ti.static(self.method == "harmonic"):
+            print("Harmonic")
+            self.harmonic_step_fun()
+        else:
+            print("[ERROR] Unknown method!")
+
+    # Step functions for each method
+    @ti.func
+    def harmonic_step_fun(self):
+        self.laplacian(self.f, self.step_f)
 
     @ti.func
     def ccst_step_fun(self):
