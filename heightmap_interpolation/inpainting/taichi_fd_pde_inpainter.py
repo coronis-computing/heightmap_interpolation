@@ -316,6 +316,7 @@ class TaichiFDPDEInpainter():
         # Inpaint!
         # self.inpaint_loop()
         self.inpaint_loop_2()
+        #self.inpaint_loop_no_progress()
 
         # Return the results
         return self.f.to_numpy()
@@ -398,30 +399,19 @@ class TaichiFDPDEInpainter():
             print(self.print_progress_last_table_row_str.format(diff))
             print("+-----------+-----------------+")
 
-    def inpaint_loop_no_out(self):
+    @ti.kernel
+    def inpaint_loop_no_progress(self):
         # Iterate until convergence (or max number of iterations reached)
         iter = 0
         converged = False                
         while not converged and iter < self.max_iters:
             for i in range(self.term_check_iters):
-                self.update()
-            self.fprev.copy_from(self.f)
-            self.update()
-            converged, diff = self.term_check()
+                self.update_impl()
+            copy_ti(self.f, self.fprev)
+            self.update_impl()
+            converged, _ = self.term_check_ti()
             
-            iter = iter + self.term_check_iters            
-            if self.print_progress and iter % self.print_progress_iters == 0:
-                print(self.print_progress_table_row_str.format(iter, diff))
-                if self.debug_dir:
-                    imgplot = plt.imshow(self.f.to_numpy())
-                    plt.savefig(os.path.join(self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)), bbox_inches="tight")
-                
-        if iter >= self.max_iters:
-            print("[WARNING] Inpainting did NOT converge: Maximum number of iterations reached...")
-        else:
-            print("+-----------+-----------------+")
-            print(self.print_progress_last_table_row_str.format(diff))
-            print("+-----------+-----------------+")
+            iter = iter + self.term_check_iters
 
     def term_check(self):
         if self.term_criteria_int == 0: 
@@ -435,6 +425,20 @@ class TaichiFDPDEInpainter():
             raise RuntimeError("Invalid termination criteria!")
         terminate = diff < self.term_thres
         return terminate, diff
+    
+    @ti.func
+    def term_check_ti(self):
+        diff = 0.0
+        if ti.static(self.term_criteria_int == 0): 
+            # Relative change
+            diff = self.step_rel_diff_impl()
+        elif ti.static(self.term_criteria_int == 1 or self.term_criteria_int == 2):
+            # Absolute change
+            diff = self.step_abs_diff_impl()
+        else:
+            print("[ERROR] Invalid termination criteria!")
+        terminate = diff < self.term_thres        
+        return terminate, diff
 
     # @ti.kernel
     # def inpaint_step(self, iter: ti.types.i32) -> ti.types.i32:
@@ -446,11 +450,11 @@ class TaichiFDPDEInpainter():
     def laplacian(self, img, img_out):
         return convolve_taichi(img, img_out, self.laplacian_kernel_2d_ti)
 
-    @ti.kernel
-    def update(self):
+    @ti.func
+    def update_impl(self):
         # self.ccst_step_fun()
-        self.step_fun()
-        for i in ti.grouped(self.f):        
+        self.step_fun()        
+        for i in ti.grouped(self.f):
             new_val = self.f[i] + self.dt*self.step_f[i]
             self.f[i] = self.pi_fun(new_val, i)
             # DevNote: for the moment, we sacrifice relaxation, as it slows down processing a lot as it was originally implemented... maybe we could run it every now and then?
@@ -458,7 +462,11 @@ class TaichiFDPDEInpainter():
                 #     self.fnew[i] = self.pi_fun(self.f[i] * (1 - self.relaxation) + self.fnew[i] * self.relaxation)
     
     @ti.kernel
-    def step_rel_diff(self) -> ti.types.f32:
+    def update(self):        
+        self.update_impl()
+    
+    @ti.func
+    def step_rel_diff_impl(self) -> ti.types.f32:
         diff_fprev_sq_sum = 0.0
         fprev_sq_sum = 0.0
         for i in ti.grouped(self.f):
@@ -471,19 +479,30 @@ class TaichiFDPDEInpainter():
         norm_fprev = ti.sqrt(fprev_sq_sum)
         diff = norm_diff_fprev/norm_fprev
         return diff
-    
+
     @ti.kernel
-    def step_abs_diff(self) -> ti.types.f32:
+    def step_rel_diff(self) -> ti.types.f32:
+        return self.step_rel_diff_impl()
+
+    @ti.func
+    def step_abs_diff_impl(self) -> ti.types.f32:
         max_abs_diff = 0.0
         for i in ti.grouped(self.f):
-            ti.atomic_max(max_abs_diff, abs(self.f[i]-self.fprev[i]))
-        
+            ti.atomic_max(max_abs_diff, abs(self.f[i]-self.fprev[i]))        
         return max_abs_diff
 
     @ti.kernel
-    def update_f(self):
+    def step_abs_diff(self) -> ti.types.f32:
+        return self.step_abs_diff_impl()
+
+    @ti.func
+    def update_f_impl(self):        
         for i in ti.grouped(self.f):
             self.fprev[i] = self.f[i]
+
+    @ti.kernel
+    def update_f(self):
+        self.update_f_impl()
 
     @ti.func
     def pi_fun(self, val, i):
@@ -527,3 +546,8 @@ def convolve_taichi(img, img_out, kernel):
             total += img[k, l] * kernel[k-i+fr, l-j+fr]
         
         img_out[i, j] = total
+
+@ti.func
+def copy_ti(img, img_out):
+    for i in ti.grouped(img):
+        img_out[i] = img[i]
