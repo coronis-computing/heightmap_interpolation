@@ -159,9 +159,10 @@ def add_inpainting_subparsers(subparsers):
     parser_shiftmap = subparsers.add_parser("shiftmap", help="OpenCV's xphoto module's Shiftmap inpainter")
 
 def create_inpainter_from_params(params):
-    options = get_common_fd_pde_inpainters_params_from_args(params)
-    if options["backend"] == "gpu" and (params.subparser_name.lower() != "harmonic" and params.subparser_name.lower() != "ccst"):
-        raise ValueError("Currently the GPU backend is only available for harmonic and ccst methods.")    
+    if params.subparser_name.lower() != "navier-stokes" and params.subparser_name.lower() != "telea" and params.subparser_name.lower() != "shiftmap":
+        options = get_common_fd_pde_inpainters_params_from_args(params)
+        if options["backend"] == "gpu" and (params.subparser_name.lower() != "harmonic" and params.subparser_name.lower() != "ccst"):
+            raise ValueError("Currently the GPU backend is only available for harmonic and ccst methods.")    
     if params.subparser_name.lower() == "harmonic":        
         if options["backend"] == "gpu":
             options["method"] = "harmonic"

@@ -6,7 +6,7 @@ This package is available through `PyPI <https://pypi.org/project/heightmap-inte
     pip install heightmap-interpolation
 
 Installation from sources
-=========================
+*************************
 
 This project expects python3.7 (or above).
 
