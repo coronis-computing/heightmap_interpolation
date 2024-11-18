@@ -24,6 +24,7 @@ from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import TaichiFDP
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVXPhotoInpainter
+from heightmap_interpolation.inpainting.exemplar_based_inpainter import ExemplarBasedInpainter
 
 # Common functions to use in the apps main functions
 
@@ -158,8 +159,21 @@ def add_inpainting_subparsers(subparsers):
     # Parser for the "shiftmap" method
     parser_shiftmap = subparsers.add_parser("shiftmap", help="OpenCV's xphoto module's Shiftmap inpainter")
 
+    # Parser for the "ebi" (Exemplar-Based Inpainter) method
+    parser_ebi = subparsers.add_parser("ebi", help="Exemplar-based inpainter")
+    parser_ebi.add_argument("--patch_size", type=int, default=9, help="Size of the inpainting patch.")
+    parser_ebi.add_argument("--search_original_source_only", action='store_true', help="If true, just the original source image - mask will be searched for inpainting patches. Otherwise, the growing inpainting area will also be taken into account.")
+    # search_color_space (str, optional): Color space to use when searching for the next best filler patch. Options available: "bgr", "hsv", "lab", "gray". In case gray is selected, the input image must also be grayscale. Defaults to "bgr".
+    parser_ebi.add_argument("--plot_progress", action='store_true', help="Activates the plotting of the inpainting process (internal of the inpainter library)")
+    parser_ebi.add_argument("--out_progress_dir", type=str, help="Set to a directory to get the same output as with --plot_progress, but stored in files.")
+    parser_ebi.add_argument("--show_progress_bar", action='store_true', help="Activates the progress bar (internal of the inpainter library).")
+    parser_ebi.add_argument("--patch_preference", type=str, help="When more than a patch has the same similarity score, this parameter selects which one to choose. Available: \"any\", \"closest\", \"random\".")
+
 def create_inpainter_from_params(params):
-    if params.subparser_name.lower() != "navier-stokes" and params.subparser_name.lower() != "telea" and params.subparser_name.lower() != "shiftmap":
+    if (params.subparser_name.lower() != "navier-stokes" and 
+        params.subparser_name.lower() != "telea" and 
+        params.subparser_name.lower() != "shiftmap" and
+        params.subparser_name.lower() != "ebi"):
         options = get_common_fd_pde_inpainters_params_from_args(params)
         if options["backend"] == "gpu" and (params.subparser_name.lower() != "harmonic" and params.subparser_name.lower() != "ccst"):
             raise ValueError("Currently the GPU backend is only available for harmonic and ccst methods.")    
@@ -188,5 +202,14 @@ def create_inpainter_from_params(params):
         inpainter = OpenCVInpainter(method="telea", radius=params.radius)
     elif params.subparser_name.lower() == "shiftmap":
         inpainter = OpenCVXPhotoInpainter(method="shiftmap")
+    elif params.subparser_name.lower() == "ebi":
+        options = {
+            "patch_size": params.patch_size,
+            "search_original_source_only": params.search_original_source_only,
+            "plot_progress": params.plot_progress,
+            "out_progress_dir": params.out_progress_dir,
+            "show_progress_bar": params.show_progress_bar,
+            "patch_preference": params.patch_preference}
+        inpainter = ExemplarBasedInpainter(**options)
 
     return inpainter

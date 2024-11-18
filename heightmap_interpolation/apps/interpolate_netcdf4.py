@@ -174,7 +174,7 @@ def interpolate(params):
             elevation_int[cur_mask_int] = zi
 
         # --- Gridded data interpolation/inpainting ---
-        gridded_methods = ['harmonic', 'tv', 'ccst', 'ccst-ti', 'amle', 'navier-stokes', 'telea', 'shiftmap']
+        gridded_methods = ['harmonic', 'tv', 'ccst', 'ccst-ti', 'amle', 'navier-stokes', 'telea', 'shiftmap', 'ebi']
         if params.subparser_name.lower() in gridded_methods:
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
