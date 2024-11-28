@@ -79,7 +79,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
             mask_int = elevation.mask
         else:
             # no invalid value, exit
-            return
+            raise RuntimeError("The elevation var on the input NetCDF does neither have an interpolation_flag variable nor a set of masked values. Therefore, there is nothing to interpolate!")
     ds.close()
 
     # Create the matrix of lat/lon coordinates out of the 1D arrays
