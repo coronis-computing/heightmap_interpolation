@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heightmap_interpolation"
-version = "1.0.3"
+version = "1.0.4"
 authors = [
   { name="Ricard Campos", email="ricard.campos@coronis.es" },
 ]
