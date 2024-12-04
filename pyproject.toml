@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heightmap_interpolation"
-version = "1.0.4"
+version = "1.0.6"
 authors = [
   { name="Ricard Campos", email="ricard.campos@coronis.es" },
 ]
@@ -34,7 +34,8 @@ dependencies = [
     'pyproj>=3.2.0',
     'taichi',    
     'sphinx',
-    'sphinx-rtd-theme'
+    'sphinx-rtd-theme',
+    'exemplar-based-inpainting'
 ]
 
 [tool.setuptools]
