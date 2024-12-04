@@ -18,12 +18,12 @@ Otherwise, the package and all its requirements can be installed from sources th
 python setup.py install 
 ```
 
-Note that it requires python3.7 to run.
+Note that it requires python >= 3.10 to run.
 
 If you prefer to install it in a virtual environment:
 
 ```
-python3.7 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install .
