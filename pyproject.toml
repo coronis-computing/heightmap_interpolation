@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heightmap_interpolation"
-version = "1.0.6"
+version = "1.0.7"
 authors = [
   { name="Ricard Campos", email="ricard.campos@coronis.es" },
 ]
@@ -24,6 +24,7 @@ dependencies = [
     'haversine>=2.5.1',
     'scipy>=1.7.1',
     'netCDF4>=1.5.7',
+    'fiona',
     'geopy>=2.2.0',
     'pandas>=1.3.2',
     'geopandas>=0.9.0',

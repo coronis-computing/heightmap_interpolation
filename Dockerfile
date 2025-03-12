@@ -1,4 +1,4 @@
-FROM python:3.7-bullseye
+FROM python:3.10-bookworm
 
 # Install the pandoc package and related (for automatic reporting)
 RUN apt-get update -qq
