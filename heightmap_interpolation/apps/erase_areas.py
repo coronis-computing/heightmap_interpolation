@@ -60,7 +60,7 @@ def simple_image_masker(img, brush_color=(0, 0, 255)):
     return mask
 
 
-def write_mask(input_file, output_file, new_interpolation_flag, elevation_var, interpolation_flag_var=None):
+def write_mask(input_file, output_file, new_interpolation_flag, elevation_var, interpolation_flag_var=None, create_interpolation_flag=True):
     # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
     # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
     # variable
@@ -79,18 +79,22 @@ def write_mask(input_file, output_file, new_interpolation_flag, elevation_var, i
     if interpolation_flag_var and interpolation_flag_var not in out_ds.variables.keys():
         raise RuntimeError(f"The input NetCDF4 dataset does not contain a variable named {interpolation_flag_var}.")
     # Also update the interpolated areas
+    new_cell_interpolated_flag = None
     if "interpolation_flag" not in out_ds.variables.keys():
-        out_ds.createVariable(
-            "interpolation_flag",
-            "int8",
-            ("lat", "lon"))
-        new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]        
+        if create_interpolation_flag:
+            out_ds.createVariable(
+                "interpolation_flag",
+                "int8",
+                ("lat", "lon"))
+            new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]        
     else:
         new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
-    new_cell_interpolated_flag[new_interpolation_flag > 0] = 1
-    new_cell_interpolated_flag[new_interpolation_flag <= 0] = 0
 
-    out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
+    if new_cell_interpolated_flag is not None:
+        new_cell_interpolated_flag[new_interpolation_flag > 0] = 1
+        new_cell_interpolated_flag[new_interpolation_flag <= 0] = 0
+
+        out_ds.variables["interpolation_flag"][:] = new_cell_interpolated_flag
 
     out_ds.close()
 
@@ -104,7 +108,9 @@ def main():
     parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
                         help="Name of the variable storing the elevation grid in the input file.")
     parser.add_argument("--interpolation_flag_var", action="store", type=str, default=None,
-                        help="Name of the variable storing the per-cell interpolation flag in the input file (0 == known value, 1 == interpolated/to interpolate cell). If it exist on the dataset, the result will be the LOGICAL OR between the original and the selected mask. If not in the dataset, it will create one in the output netcdf file with the \"interpolation_flag\" id containing the selected mask.")
+                        help="Name of the variable storing the per-cell interpolation flag in the input file (0 == known value, 1 == interpolated/to interpolate cell). If it exist on the dataset, the result will be the LOGICAL OR between the original and the selected mask. If not in the dataset and the --create_interpolation_flag flag is set, it will create one in the output netcdf file with the \"interpolation_flag\" id containing the selected mask.")
+    parser.add_argument("--create_interpolation_flag", action="store_true", default=False,
+                        help="Create the interpolation_flag variable if it does not exist in the input file.")    
     args = parser.parse_args()
 
     # Read the file
@@ -128,7 +134,7 @@ def main():
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
-    write_mask(args.input_file, args.output_file, new_interpolation_flag, args.elevation_var, args.interpolation_flag_var)
+    write_mask(args.input_file, args.output_file, new_interpolation_flag, args.elevation_var, args.interpolation_flag_var, args.create_interpolation_flag)
     
 
 
