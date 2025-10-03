@@ -4,3 +4,5 @@ Heightmap_Interpolation.egg-info/
 venv/
 *.pyc
 __pycache__/
+.vscode
+*.egg-info/
