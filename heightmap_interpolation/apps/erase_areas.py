@@ -9,6 +9,9 @@ import shutil
 def simple_image_masker(img, brush_color=(0, 0, 255)):
     img_cp = img.copy()
 
+    if len(img.shape) != 3:
+        img_cp = cv2.cvtColor(img_cp, cv2.COLOR_GRAY2BGR)
+
     cv2.namedWindow('Draw a mask', cv2.WINDOW_GUI_NORMAL)
 
     brush_size = 5
@@ -24,9 +27,19 @@ def simple_image_masker(img, brush_color=(0, 0, 255)):
         nonlocal mask, img_cp, drawing
         if event == cv2.EVENT_LBUTTONDOWN:            
             drawing = True
+            if brush_size == 1:
+                img_cp[y, x] = brush_color
+                mask[y, x] = 255
+            else:
+                cv2.circle(img_cp, (x, y), brush_size, brush_color, -1)
+                cv2.circle(mask, (x, y), brush_size, 255, -1)
         elif event == cv2.EVENT_MOUSEMOVE and drawing:
-            cv2.circle(img_cp, (x, y), brush_size, brush_color, -1)
-            cv2.circle(mask, (x, y), brush_size, 255, -1)
+            if brush_size == 1:
+                img_cp[y, x] = brush_color
+                mask[y, x] = 255
+            else:
+                cv2.circle(img_cp, (x, y), brush_size, brush_color, -1)
+                cv2.circle(mask, (x, y), brush_size, 255, -1)
         elif event == cv2.EVENT_LBUTTONUP:
             drawing = False
     cv2.setMouseCallback('Draw a mask', click_event)
@@ -110,6 +123,10 @@ def main():
     mask = simple_image_masker(display)
 
     new_interpolation_flag = cv2.bitwise_or(mask, interpolation_flag)
+
+    # cv2.imshow('The resulting mask', mask)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
     write_mask(args.input_file, args.output_file, new_interpolation_flag, args.elevation_var, args.interpolation_flag_var)
     
