@@ -73,7 +73,7 @@ def get_common_fd_pde_inpainters_params_from_args(params):
                "debug_dir": params.debug_dir}
     return options
 
-def add_inpainting_subparsers(subparsers):
+def add_subparsers(subparsers):
     # Parser for the "nearest" method
     parser_nearest = subparsers.add_parser("nearest", help="Nearest-neighbor interpolator")
     parser_nearest.add_argument("--rescale", action="store_true", dest="rescale",

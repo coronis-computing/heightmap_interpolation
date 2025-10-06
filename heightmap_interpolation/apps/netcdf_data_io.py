@@ -36,7 +36,7 @@ def imageToArray(i):
     return a
 
 
-def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_var=None, areas_kml_file=None):
+def load_interpolation_input_data(input_file, elevation_var, x_var = "lon", y_var = "lat", x_dim="lon", y_dim="lat", interpolation_flag_var=None, areas_kml_file=None):
     """Loads the data required for interpolation from the NetCDF file
 
     :param input_file: path to the input file (expected NetCDF4 format)
@@ -48,13 +48,27 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
     # Read the file
     ds = nc.Dataset(input_file, "r", format="NETCDF4")
 
-    # Get the dimensions of the grid
-    num_lat = len(ds.dimensions["lat"])
-    num_lon = len(ds.dimensions["lon"])
+    # Check that the dimensions and variables exist
+    if x_dim not in ds.dimensions:
+        raise ValueError(f"Dimension {x_dim} not found in file {input_file}")
+    if y_dim not in ds.dimensions:
+        raise ValueError(f"Dimension {y_dim} not found in file {input_file}")
+    if x_var not in ds.variables:
+        raise ValueError(f"Variable {x_var} not found in file {input_file}")
+    if y_var not in ds.variables:
+        raise ValueError(f"Variable {y_var} not found in file {input_file}")
+    if elevation_var not in ds.variables:
+        raise ValueError(f"Variable {elevation_var} not found in file {input_file}")
+    if interpolation_flag_var and interpolation_flag_var not in ds.variables:
+        raise ValueError(f"You set the interpolation flag, but variable {interpolation_flag_var} was not found in file {input_file}")
 
-    # Get the lat/lon coordinates
-    lats_1d = ds.variables["lat"][:]
-    lons_1d = ds.variables["lon"][:]
+    # Get the dimensions of the grid
+    num_rows = len(ds.dimensions[y_dim])
+    num_cols = len(ds.dimensions[x_dim])
+
+    # Get the x/y coordinates (1D arrays)
+    ys_1d = ds.variables[y_var][:]
+    xs_1d = ds.variables[x_var][:]
 
     # Get the elevation data
     elevation = ds.variables[elevation_var][:]
@@ -70,7 +84,7 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
         # If the elevation field is masked, we just focus on the values of reference/to interpolate
         # that are in the valid area
         if np.ma.is_masked(elevation):
-            mask_int[elevation.mask] = False  # turn to true to interpolate everywhere bathymetry is empty
+            # mask_int[elevation.mask] = False  # turn to true to interpolate everywhere bathymetry is empty
             mask_ref[elevation.mask] = False
     else:
         # Get the "invalid" values out of the elevation matrix
@@ -83,15 +97,15 @@ def load_interpolation_input_data(input_file, elevation_var, interpolation_flag_
     ds.close()
 
     # Create the matrix of lat/lon coordinates out of the 1D arrays
-    lats_mat = np.tile(lats_1d.reshape(-1, 1), (1, num_lon))
-    lons_mat = np.tile(lons_1d, (num_lat, 1))
+    ys_mat = np.tile(ys_1d.reshape(-1, 1), (1, num_cols))    
+    xs_mat = np.tile(xs_1d, (num_rows, 1))
 
-    work_areas = create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d)
+    work_areas = create_work_areas(elevation, areas_kml_file, xs_1d, ys_1d)
 
-    return lats_mat, lons_mat, elevation, mask_int, mask_ref, work_areas
+    return xs_mat, ys_mat, elevation, mask_int, mask_ref, work_areas
 
 
-def write_interpolation_results(input_file, output_file, elevation, mask_int, elevation_var, interpolation_flag_var=None, areas_kml_file=None):
+def write_interpolation_results(input_file, output_file, elevation, mask_int, elevation_var, x_dim="lon", y_dim="lat", interpolation_flag_var=None, areas_kml_file=None):
     # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
     # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
     # variable
@@ -119,7 +133,7 @@ def write_interpolation_results(input_file, output_file, elevation, mask_int, el
             out_ds.createVariable(
                 "interpolation_flag",
                 "int8",
-                ("lat", "lon"),
+                (y_dim, x_dim),
                 compression=complib,
                 complevel=complevel,
                 chunksizes=chunksizes,
@@ -171,7 +185,7 @@ def write_interpolation_results_new_file(output_file, elevation, mask_int, lats,
 
 
 def create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d):
-        # Are we using a KML to restrict the interpolation?
+    # Are we using a KML to restrict the interpolation?
     if areas_kml_file:
         # Read the KML file using geopandas
         df = gpd.read_file(areas_kml_file, driver='KML')
@@ -256,8 +270,6 @@ def create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d):
         #     # Extract the mask out of the raster
         #     work_areas[:, :, i] = imageToArray(rasterPoly) == 1
         #     i = i+1
-
-
     else:
         work_areas = np.full((elevation.shape[0], elevation.shape[1], 1), True)
 

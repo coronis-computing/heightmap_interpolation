@@ -7,11 +7,15 @@ import matplotlib.pyplot as plt
 def create_sample(params):
     # Read the elevation data
     ds = nc.Dataset(params.input_file, "r", format="NETCDF4")
-    elevation = ds[params.elevation_var]
-    lats_1d = ds.variables["lat"][:]
-    lons_1d = ds.variables["lon"][:]
+    elevation = ds.variables[params.elevation_var][:]
+    xs_1d = ds.variables[params.x_var][:]
+    ys_1d = ds.variables[params.y_var][:]
 
-    valid_pts = np.argwhere(~np.isnan(elevation))
+    # Get valid points
+    if np.ma.is_masked(elevation):
+        valid_pts = np.argwhere(~elevation.mask)
+    else:
+        valid_pts = np.argwhere(~np.isnan(elevation))
 
     # Take random samples
     valid_pts_inds = np.random.choice(valid_pts.shape[0], params.num_samples)
@@ -20,19 +24,19 @@ def create_sample(params):
     for i, ind in zip(range(params.num_samples), valid_pts_inds):
         x = valid_pts[ind, 1]
         y = valid_pts[ind, 0]
-        samples[i, :] = [lons_1d[x], lats_1d[y], elevation[y, x]]        
+        samples[i, :] = [xs_1d[x], ys_1d[y], elevation[y, x]]        
 
     # Show sample
     if params.show:
-        lons_selected = np.zeros(params.num_samples)
-        lats_selected = np.zeros(params.num_samples)
+        xs_selected = np.zeros(params.num_samples)
+        ys_selected = np.zeros(params.num_samples)
         for i, ind in zip(range(params.num_samples), valid_pts_inds):
             x = valid_pts[ind, 1]
             y = valid_pts[ind, 0]
-            lons_selected[i] = lons_1d[x]
-            lats_selected[i] = lats_1d[y]
+            xs_selected[i] = xs_1d[x]
+            ys_selected[i] = ys_1d[y]
         print("Showing the samples taken, close the window to continue...")
-        plt.scatter(lons_selected.T, lats_selected.T)
+        plt.scatter(xs_selected.T, ys_selected.T)
         plt.show(block=True)        
 
     # Write to file
@@ -46,12 +50,16 @@ def parse_args(args=None):
                         help="Input NetCDF file")
     parser.add_argument("-o","--output_file", dest="output_file", action="store", type=str,
                         help="Output NetCDF file with interpolated values")
-    parser.add_argument("-n","--num_samples", dest="num_samples", action="store", type=int,
+    parser.add_argument("-n","--num_samples", dest="num_samples", action="store", type=int, required=True,
                         help="Number of random samples to draw from the input dataset")
     parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
                         help="Show a 2D plot of the sample points")
     parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
                         help="Name of the variable storing the elevation grid in the input file.")
+    parser.add_argument("--x_var", action="store", type=str, default="lon",
+                        help="Name of the variable storing the columns' coordinates of the elevation grid in the input file.")
+    parser.add_argument("--y_var", action="store", type=str, default="lat",
+                        help="Name of the variable storing the rows' coordinates of the elevation grid in the input file.")    
     return parser.parse_args(args)
 
 

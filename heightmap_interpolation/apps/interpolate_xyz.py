@@ -31,71 +31,72 @@ from heightmap_interpolation.interpolants.linear_interpolant import LinearInterp
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import QuadTreePURBFInterpolant
-from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_inpainting_subparsers
+from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_subparsers
 from heightmap_interpolation.apps.netcdf_data_io import create_work_areas, write_interpolation_results_new_file
 
-def load_interpolation_input_data_xyz(input_file, separator, raster_step, min_lat = np.NAN, max_lat = np.NAN, min_lon = np.NAN, max_lon = np.NAN, areas_kml_file=None):
+def load_interpolation_input_data_xyz(input_file, delimiter, raster_step, min_y = np.nan, max_y = np.nan, min_x = np.nan, max_x = np.nan, areas_kml_file=None):
     
-    # Load the xyz (lon, lat, elevation) from a coma(or other)-separated file
-    data = np.genfromtxt(input_file, delimiter=separator)
-    lons = data[:, 0]
-    lats = data[:, 1]
+    # Load the xyz (x, y, elevation) from a coma(or other)-separated file
+    data = np.genfromtxt(input_file, delimiter=delimiter)
+
+    xs = data[:, 0]
+    ys = data[:, 1]
     elev = data[:, 2]
 
     # The result will be a raster, so we need to set its bounds
-    if np.isnan(min_lat): #or np.isnan(max_lat) or np.isnan(min_lon) or np.isnan(max_lon):
-        min_lat = np.min(lats)
-    elif min_lat > np.min(lats):
-        print("[WARNING] the minimum latitude requested ({:f}) is larger than the minimum latitude of the samples ({:f})", min_lat, np.min(lats))
-    if np.isnan(min_lon):
-        min_lon = np.min(lons)
-    elif min_lon > np.min(lons):
-        print("[WARNING] the minimum longitude requested ({:f}) is larger than the minimum longitude of the samples ({:f})", min_lon, np.min(lons))
-    if np.isnan(max_lat):
-        max_lat = np.max(lats)
-    elif max_lat < np.max(lats):
-        print("[WARNING] the maximum latitude requested ({:f}) is smaller than the maximum latitude of the samples ({:f})", max_lat, np.max(lats))
-    if np.isnan(max_lon):
-        max_lon = np.max(lons)
-    elif max_lon < np.max(lons):
-        print("[WARNING] the maximum longitude requested ({:f}) is smaller than the maximum longitude of the samples ({:f})", max_lon, np.max(lons))
+    if np.isnan(min_y): #or np.isnan(max_y) or np.isnan(min_x) or np.isnan(max_x):
+        min_y = np.min(ys)
+    elif min_y > np.min(ys):
+        print("[WARNING] the minimum Y requested ({:f}) is larger than the minimum Y of the samples ({:f})", min_y, np.min(ys))
+    if np.isnan(min_x):
+        min_x = np.min(xs)
+    elif min_x > np.min(xs):
+        print("[WARNING] the minimum X requested ({:f}) is larger than the minimum X of the samples ({:f})", min_x, np.min(xs))
+    if np.isnan(max_y):
+        max_y = np.max(ys)
+    elif max_y < np.max(ys):
+        print("[WARNING] the maximum Y requested ({:f}) is smaller than the maximum Y of the samples ({:f})", max_y, np.max(ys))
+    if np.isnan(max_x):
+        max_x = np.max(xs)
+    elif max_x < np.max(xs):
+        print("[WARNING] the maximum X requested ({:f}) is smaller than the maximum X of the samples ({:f})", max_x, np.max(xs))
     
     # Check the values...
-    if min_lat > max_lat:
-        raise Exception("the minimum latitude cannot be larger than the maximum latitude")
-    if min_lon > max_lon:
-        raise Exception("the minimum longitude cannot be larger than the maximum longitude")
+    if min_y > max_y:
+        raise Exception("the minimum Y cannot be larger than the maximum Y")
+    if min_x > max_x:
+        raise Exception("the minimum X cannot be larger than the maximum X")
     
-    lats_1d = np.arange(min_lat, max_lat, raster_step)
-    lons_1d = np.arange(min_lon, max_lon, raster_step)
+    ys_1d = np.arange(min_y, max_y, raster_step)
+    xs_1d = np.arange(min_x, max_x, raster_step)
 
     # Get the dimensions of the grid
-    num_lat = len(lats_1d)
-    num_lon = len(lons_1d)
+    num_y = len(ys_1d)
+    num_x = len(xs_1d)
 
-    # Create the matrix of lat/lon coordinates out of the 1D arrays
-    lats_mat = np.tile(lats_1d.reshape(-1, 1), (1, num_lon))
-    lons_mat = np.tile(lons_1d, (num_lat, 1))
+    # Create the matrix of x/y coordinates out of the 1D arrays
+    ys_mat = np.tile(ys_1d.reshape(-1, 1), (1, num_x))
+    xs_mat = np.tile(xs_1d, (num_y, 1))
 
     # Create an EMPTY elevation data
-    elevation = np.zeros_like(lats_mat)
+    elevation = np.zeros_like(ys_mat)
 
-    work_areas = create_work_areas(elevation, areas_kml_file, lons_1d, lats_1d)
+    work_areas = create_work_areas(elevation, areas_kml_file, xs_1d, ys_1d)
 
-    return lons, lats, elev, lats_mat, lons_mat, elevation, work_areas
+    return xs, ys, elev, xs_mat, ys_mat, elevation, work_areas
 
 
-def samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation):
-    lats_1d = lats_mat[:, 0]
-    lons_1d = lons_mat[0, :]
+def samples_to_grid(xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation):
+    ys_1d = ys_mat[:, 0]
+    xs_1d = xs_mat[0, :]
 
     accum = np.zeros_like(elevation)
     num_elems = np.zeros_like(elevation)
-    for lon, lat, elev in zip(lons_ref, lats_ref, elevation_ref):
-        lon_ind = find_nearest_ind(lons_1d, lon)
-        lat_ind = find_nearest_ind(lats_1d, lat)
-        accum[lat_ind, lon_ind] += elev
-        num_elems[lat_ind, lon_ind] += 1
+    for x, y, elev in zip(xs_ref, ys_ref, elevation_ref):
+        x_ind = find_nearest_ind(xs_1d, x)
+        y_ind = find_nearest_ind(ys_1d, y)
+        accum[y_ind, x_ind] += elev
+        num_elems[y_ind, x_ind] += 1
     
     return accum/num_elems, num_elems == 0
 
@@ -116,7 +117,14 @@ def rasterize(params):
     if params.verbose:
         condp.print("- Loading data...", end='', flush=True)
         ts = timer()
-    lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation_int, work_areas = load_interpolation_input_data_xyz(params.input_file, params.areas, params.cell_size)
+    xs_ref, ys_ref, elevation_ref, xs_mat, ys_mat, elevation_int, work_areas = load_interpolation_input_data_xyz(params.input_file, 
+                                                                                                                         params.delimiter,
+                                                                                                                         params.cell_size,
+                                                                                                                         params.min_y,
+                                                                                                                         params.max_y,
+                                                                                                                         params.min_x,
+                                                                                                                         params.max_x,
+                                                                                                                         params.areas)
     
     if params.verbose:
         te = timer()
@@ -125,7 +133,7 @@ def rasterize(params):
     # Show a bit of information regarding the interpolation problem (percentage of missing data to interpolate w.r.t. the full image)
     if params.verbose:
         condp.print("- Summary of input data:")
-        condp.print("    - Input XYZ has {:d} data points".format(lons_ref.shape[0]))
+        condp.print("    - Input XYZ has {:d} data points".format(xs_ref.shape[0]))
         condp.print("    - Output elevation grid has a size of {:d}x{:d} cells".format(elevation_int.shape[0], elevation_int.shape[1]))
         if params.areas:
             condp.print("    - Data will be interpolated just at the user-defined areas")
@@ -145,15 +153,17 @@ def rasterize(params):
         # --- Scattered data interpolation ---
         scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf']
         if params.subparser_name.lower() in scattered_methods:
+            mask_int = np.ones_like(elevation_int) # Note: when using a scattered data interpolation method, ALL grid points will be interpolated
+
             # Cast the matrices to a set of "scattered" data points and references
-            lats_int = lats_mat[cur_work_area]
-            lons_int = lons_mat[cur_work_area]
+            ys_int = ys_mat[cur_work_area]
+            xs_int = xs_mat[cur_work_area]
 
             # Show a bit of information regarding the current area interpolation problem (percentage of missing data to interpolate w.r.t. the full image)
             if params.verbose and params.areas:
                 condp.print("- Interpolating area {:d}/{:d}:".format(i+1, work_areas.shape[2]))
-                condp.print("    - Number of reference cells = {:d}".format(len(lats_ref)))
-                condp.print("    - Number of cells to interpolate = {:d}".format(len(lats_int)))
+                condp.print("    - Number of reference cells = {:d}".format(len(ys_ref)))
+                condp.print("    - Number of cells to interpolate = {:d}".format(len(ys_int)))
 
             # Create the interpolant
             if params.verbose:
@@ -161,19 +171,19 @@ def rasterize(params):
                 condp.print("- Creating the interpolant...", end=endl)
                 ts = timer()
             if params.subparser_name.lower() == "nearest":
-                interpolant = NearestNeighborInterpolant(lons_ref, lats_ref, elevation_ref,
+                interpolant = NearestNeighborInterpolant(xs_ref, ys_ref, elevation_ref,
                                                          params.rescale)
             elif params.subparser_name.lower() == "linear":
-                interpolant = LinearInterpolant(lons_ref, lats_ref, elevation_ref,
+                interpolant = LinearInterpolant(xs_ref, ys_ref, elevation_ref,
                                                 params.fill_value, params.rescale)
             elif params.subparser_name.lower() == "cubic":
-                interpolant = CubicInterpolant(lons_ref, lats_ref, elevation_ref,
+                interpolant = CubicInterpolant(xs_ref, ys_ref, elevation_ref,
                                                params.fill_value, params.tolerance, params.max_iters, params.rescale)
             elif params.subparser_name.lower() == "rbf":
                 # Warn the user if the PURBF is better suited for this problem
-                if len(lats_ref) > 10000:
+                if len(ys_ref) > 10000:
                     print("\n!!!WARNING!!! You are trying to build a RBF intepolant from a large number of data points, and this may require large computational cost and memory consumption.\nPlease consider using the PURBF interpolant instead!")
-                interpolant = RBFInterpolant(lons_ref, lats_ref, elevation_ref,
+                interpolant = RBFInterpolant(xs_ref, ys_ref, elevation_ref,
                                              rbf_type=params.rbf_type,
                                              distance_type=params.rbf_distance_type,
                                              epsilon=params.rbf_epsilon,
@@ -181,15 +191,15 @@ def rasterize(params):
                                              polynomial_degree=params.rbf_polynomial_degree)
             elif params.subparser_name.lower() == "purbf":
                 # Compute the query domain to be that of the points to interpolate
-                minX = np.min(lons_int)
-                maxX = np.max(lons_int)
-                minY = np.min(lats_int)
-                maxY = np.max(lats_int)
+                minX = np.min(xs_int)
+                maxX = np.max(xs_int)
+                minY = np.min(ys_int)
+                maxY = np.max(ys_int)
                 w = maxX - minX
                 h = maxY - minY
                 wh = max(w, h)
-                domain = [np.min(lons_int), np.min(lats_int), wh]
-                interpolant = QuadTreePURBFInterpolant(lons_ref, lats_ref, elevation_ref,
+                domain = [np.min(xs_int), np.min(ys_int), wh]
+                interpolant = QuadTreePURBFInterpolant(xs_ref, ys_ref, elevation_ref,
                                                        domain=domain,
                                                        min_points_in_cell=params.pu_min_point_in_cell,
                                                        overlap=params.pu_overlap,
@@ -209,13 +219,13 @@ def rasterize(params):
                 condp.print("- Applying the interpolant at the query points...", end=endl)
                 ts = timer()
             if params.subparser_name.lower() != "rbf" and params.subparser_name.lower() != "purbf":
-                zi = interpolant(lons_int, lats_int)
+                zi = interpolant(xs_int, ys_int)
             else:
                 # For RBF and PURBF, apply the interpolant in blocks to avoid large memory consumption
 
                 # Divide the data into blocks
                 query_block_size = params.query_block_size
-                zi = np.zeros(lons_int.shape)
+                zi = np.zeros(xs_int.shape)
                 num_int = np.sum(cur_work_area)
                 num_blocks = math.ceil(num_int/query_block_size)
                 block_start = 0
@@ -227,8 +237,8 @@ def rasterize(params):
                     condp.print(message)
                     # condp.backspace(len(message))
 
-                    zi[block_start:block_end] = interpolant(lons_int[block_start:block_end],
-                                                            lats_int[block_start:block_end])
+                    zi[block_start:block_end] = interpolant(xs_int[block_start:block_end],
+                                                            ys_int[block_start:block_end])
                     block_end = min([block_end + query_block_size, num_int])
                     block_start = block_start + query_block_size
             if params.verbose:
@@ -241,7 +251,7 @@ def rasterize(params):
         # --- Gridded data interpolation/inpainting ---
         gridded_methods = ['harmonic', 'tv', 'ccst', 'amle', 'navier-stokes', 'telea', 'shiftmap']
         if params.subparser_name.lower() in gridded_methods:
-            elevation_int, mask_int = samples_to_grid(lons_ref, lats_ref, elevation_ref, lats_mat, lons_mat, elevation_int)
+            elevation_int, mask_int = samples_to_grid(xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation_int)
 
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
@@ -282,20 +292,20 @@ def rasterize(params):
     if params.output_file:
         condp.print("- Writing the results to disk")
         write_interpolation_results_new_file(params.output_file,
-                                             elevation_int, mask_int, lats_mat[:, 0], lons_mat[0, :],
+                                             elevation_int, mask_int, ys_mat[:, 0], xs_mat[0, :],
                                              params.elevation_var, params.interpolation_flag_var)
 
     # Show results
     if params.show:
         condp.print("- Showing results (close the window to continue)")
-        plt.imshow(elevation_int)
+        plt.imshow(elevation_int, origin='lower')
         plt.show(block=True)
 
 
 def parse_args(args=None):
     # Parameters
     parser = argparse.ArgumentParser(
-        description="Interpolate elevation data in a SeaDataNet_1.0 CF1.6-compliant netCDF4 file")
+        description="Interpolate/grid XYZ data to a netCDF4 file")
     # Create a sub-parser for each possible interpolator, with its own options
     subparsers = parser.add_subparsers(help='sub-command help', dest='subparser_name')
     parser.add_argument("input_file", action="store", type=str,
@@ -306,24 +316,34 @@ def parse_args(args=None):
                         help="KML file containing the areas that will be interpolated.")
     parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
                         help="Name of the variable storing the elevation grid in the OUTPUT file.")
+    parser.add_argument("--x_var", action="store", type=str, default="lon",
+                        help="Name of the variable storing the columns' coordinates of the elevation grid in the output file.")
+    parser.add_argument("--y_var", action="store", type=str, default="lat",
+                        help="Name of the variable storing the rows' coordinates of the elevation grid in the output file.")    
+    parser.add_argument("--x_dim", action="store", type=str, default="",
+                        help="Name of the dimension for the columns' coordinates of the elevation grid in the output file. Defaults to y_var if not set.")
+    parser.add_argument("--y_dim", action="store", type=str, default="",
+                        help="Name of the dimension for the rows' coordinates of the elevation grid in the output file. Defaults to x_var if not set.")
     parser.add_argument("--interpolation_flag_var", action="store", type=str, default="interpolation_flag",
-                        help="Name of the variable storing the per-cell interpolation flag in the OUTPUT file")
-    parser.add_argument("--min_lat", action="store", type=float, default=np.NAN,
-                        help="Minimum latitude of the output raster grid (if not set, will be computed from the samples' bounds).")
-    parser.add_argument("--max_lat", action="store", type=float, default=np.NAN,
-                        help="Maximum latitude of the output raster grid (if not set, will be computed from the samples' bounds).")
-    parser.add_argument("--min_lon", action="store", type=float, default=np.NAN,
-                        help="Minimum longitude of the output raster grid (if not set, will be computed from the samples' bounds).")
-    parser.add_argument("--max_lon", action="store", type=float, default=np.NAN,
-                        help="Maximum longitude of the output raster grid (if not set, will be computed from the samples' bounds).")
+                        help="Name of the variable storing the per-cell interpolation flag in the output file")
+    parser.add_argument("--min_y", action="store", type=float, default=np.nan,
+                        help="Minimum Y of the output raster grid (if not set, will be computed from the samples' bounds).")
+    parser.add_argument("--max_y", action="store", type=float, default=np.nan,
+                        help="Maximum Y of the output raster grid (if not set, will be computed from the samples' bounds).")
+    parser.add_argument("--min_x", action="store", type=float, default=np.nan,
+                        help="Minimum X of the output raster grid (if not set, will be computed from the samples' bounds).")
+    parser.add_argument("--max_x", action="store", type=float, default=np.nan,
+                        help="Maximum X of the output raster grid (if not set, will be computed from the samples' bounds).")
     parser.add_argument("--cell_size", action="store", type=float, required=True, 
                         help="Cell size of each cell in the interpolated raster, in the units of the XYZ")
+    parser.add_argument("--delimiter", action="store", type=str, required=False, default=None,
+                        help="The string used to separate values. By default, any consecutive whitespaces act as delimiter. An integer or sequence of integers can also be provided as width(s) of each field.")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,
                         help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")    
     parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
                         help="Show interpolation problem and results on screen")
-
-    add_inpainting_subparsers(subparsers)
+    
+    add_subparsers(subparsers)
 
     return parser.parse_args(args)
     
