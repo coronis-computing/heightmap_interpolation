@@ -153,7 +153,7 @@ def interpolate(params):
                                                             adaptive_tree_visualization_exe_path=params.adaptive_tree_visualization_exe_path,
                                                             workspace=params.workspace,
                                                             verbose=params.verbose,
-                                                            degree=2,
+                                                            degree=params.degree,
                                                             boundary_type=params.boundary_type,
                                                             depth=params.depth,
                                                             solve_depth=params.solve_depth,
