@@ -36,7 +36,8 @@ dependencies = [
     'taichi',    
     'sphinx',
     'sphinx-rtd-theme',
-    'exemplar-based-inpainting'
+    'exemplar-based-inpainting',
+    'torch'
 ]
 
 [tool.setuptools]

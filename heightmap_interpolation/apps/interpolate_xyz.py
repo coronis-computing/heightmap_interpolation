@@ -31,6 +31,7 @@ from heightmap_interpolation.interpolants.linear_interpolant import LinearInterp
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import QuadTreePURBFInterpolant
+from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
 from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_subparsers
 from heightmap_interpolation.apps.netcdf_data_io import create_work_areas, write_interpolation_results_new_file
 
@@ -67,8 +68,8 @@ def load_interpolation_input_data_xyz(input_file, delimiter, raster_step, min_y 
     if min_x > max_x:
         raise Exception("the minimum X cannot be larger than the maximum X")
     
-    ys_1d = np.arange(min_y, max_y, raster_step)
-    xs_1d = np.arange(min_x, max_x, raster_step)
+    ys_1d = np.linspace(min_y, max_y, math.ceil((max_y - min_y) / raster_step))
+    xs_1d = np.linspace(min_x, max_x, math.ceil((max_x - min_x) / raster_step))
 
     # Get the dimensions of the grid
     num_y = len(ys_1d)
@@ -151,7 +152,7 @@ def rasterize(params):
         cur_work_area = work_areas[:, :, i]
 
         # --- Scattered data interpolation ---
-        scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf']
+        scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf', 'mlp']
         if params.subparser_name.lower() in scattered_methods:
             mask_int = np.ones_like(elevation_int) # Note: when using a scattered data interpolation method, ALL grid points will be interpolated
 
@@ -210,6 +211,9 @@ def rasterize(params):
                                                        epsilon=params.rbf_epsilon,
                                                        regularization=params.rbf_regularization,
                                                        polynomial_degree=params.rbf_polynomial_degree)
+            elif params.subparser_name.lower() == "mlp":
+                interpolant = MLPInterpolant(xs_ref, ys_ref, elevation_ref) # TODO: set parameters from command line!
+
             if params.verbose:
                 te = timer()
                 condp.print(" done, {:.2f} sec.".format(te - ts))
@@ -298,7 +302,10 @@ def rasterize(params):
     # Show results
     if params.show:
         condp.print("- Showing results (close the window to continue)")
-        plt.imshow(elevation_int, origin='lower')
+        
+        # plt.imshow(elevation_int, origin='lower')
+        plt.contourf(xs_mat, ys_mat, elevation_int, levels=50, cmap='viridis')
+        plt.scatter(xs_ref, ys_ref, c=elevation_ref, s=10, alpha=0.3, cmap='viridis')
         plt.show(block=True)
 
 

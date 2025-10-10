@@ -32,7 +32,10 @@ from heightmap_interpolation.interpolants.linear_interpolant import LinearInterp
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import QuadTreePURBFInterpolant
+from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
+from heightmap_interpolation.interpolants.poisson_recon_external_interpolant import PoissonReconExternalInterpolant
 from heightmap_interpolation.apps.apps_common import create_inpainter_from_params, add_subparsers
+import subprocess
 
 
 def interpolate(params):
@@ -75,7 +78,7 @@ def interpolate(params):
         cur_work_area = work_areas[:, :, i]
 
         # --- Scattered data interpolation ---
-        scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf']
+        scattered_methods = ['nearest', 'linear', 'cubic', 'rbf', 'purbf', 'mlp', 'ext_poisson']
         if params.subparser_name.lower() in scattered_methods:
             # Get the reference points from the current working area
             cur_mask_ref = np.logical_and(mask_ref, cur_work_area)
@@ -142,6 +145,33 @@ def interpolate(params):
                                                        epsilon=params.rbf_epsilon,
                                                        regularization=params.rbf_regularization,
                                                        polynomial_degree=params.rbf_polynomial_degree)
+            elif params.subparser_name.lower() == "mlp":
+                interpolant = MLPInterpolant(xs_ref, ys_ref, elevation_ref) # TODO: set parameters from command line!                
+            elif params.subparser_name.lower() == "ext_poisson":
+                interpolant = PoissonReconExternalInterpolant(xs_ref, ys_ref, elevation_ref, 
+                                                            point_interpolant_exe_path=params.point_interpolant_exe_path,
+                                                            adaptive_tree_visualization_exe_path=params.adaptive_tree_visualization_exe_path,
+                                                            workspace=params.workspace,
+                                                            verbose=params.verbose,
+                                                            degree=2,
+                                                            boundary_type=params.boundary_type,
+                                                            depth=params.depth,
+                                                            solve_depth=params.solve_depth,
+                                                            full_depth=params.full_depth,
+                                                            base_depth=params.base_depth,
+                                                            base_v_cycles=params.base_v_cycles,
+                                                            laplacian_weight=params.laplacian_weight,
+                                                            bi_laplacian_weight=params.bi_laplacian_weight,
+                                                            iters=params.iters,
+                                                            exact=params.exact,
+                                                            parallel_type=params.parallel_type,
+                                                            schedule_type=params.schedule_type,
+                                                            chunk_size=params.chunk_size,
+                                                            cg_accuracy=params.cg_accuracy,
+                                                            max_memory=params.max_memory,
+                                                            in_core=params.in_core)
+            else:
+                raise ValueError("Unknown interpolant type: {}".format(params.subparser_name))
             if params.verbose:
                 te = timer()
                 condp.print(" done, {:.2f} sec.".format(te - ts))
@@ -149,9 +179,9 @@ def interpolate(params):
             # Interpolate at the grid points
             if params.verbose:
                 condp.print("- Applying the interpolant at the query points...", end=endl)
-                ts = timer()
+                ts = timer()            
             if params.subparser_name.lower() != "rbf" and params.subparser_name.lower() != "purbf":
-                zi = interpolant(xs_int, ys_int)
+                zi = interpolant(xs_int, ys_int)            
             else:
                 # For RBF and PURBF, apply the interpolant in blocks to avoid large memory consumption
 
@@ -179,6 +209,9 @@ def interpolate(params):
 
             # Put the interpolated values back into the elevation matrix
             elevation_int[cur_mask_int] = zi
+
+            # Cleanup, if needed
+            interpolant.cleanup()
 
         # --- Gridded data interpolation/inpainting ---
         gridded_methods = ['harmonic', 'tv', 'ccst', 'ccst-ti', 'amle', 'navier-stokes', 'telea', 'shiftmap', 'ebi']
@@ -217,7 +250,8 @@ def interpolate(params):
             # elevation_int[rmin:rmax+1, cmin:cmax+1] = cur_elevation_int
             elevation_slice = elevation_int[rmin:rmax + 1, cmin:cmax + 1] # Do not copy! we want to refer to that part in elevation_int matrix
             elevation_slice[~cur_inpaint_mask] = cur_elevation_int[~cur_inpaint_mask] # Only modify the inpainted part! (This way we preserve "unknown"/NaN values in areas we did not interpolate
-
+        
+        
     # Write the results
     if params.output_file:
         condp.print("- Writing the results to disk")
@@ -260,9 +294,9 @@ def parse_args(args=None):
     parser.add_argument("--y_var", action="store", type=str, default="lat",
                         help="Name of the variable storing the rows' coordinates of the elevation grid in the input file.")    
     parser.add_argument("--x_dim", action="store", type=str, default="",
-                        help="Name of the dimension for the columns' coordinates of the elevation grid in the input file. Defaults to y_var if not set.")
+                        help="Name of the dimension for the columns' coordinates of the elevation grid in the input file. Defaults to x_var if not set.")
     parser.add_argument("--y_dim", action="store", type=str, default="",
-                        help="Name of the dimension for the rows' coordinates of the elevation grid in the input file. Defaults to x_var if not set.")
+                        help="Name of the dimension for the rows' coordinates of the elevation grid in the input file. Defaults to y_var if not set.")
     parser.add_argument("--interpolation_flag_var", action="store", type=str, default=None,
                         help="Name of the variable storing the per-cell interpolation flag in the input file (0 == known value, 1 == interpolated/to interpolate cell). If not set, it will interpolate the locations in the elevation variable containing an invalid (NaN) value.")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,

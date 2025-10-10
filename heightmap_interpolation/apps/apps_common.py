@@ -121,6 +121,37 @@ def add_subparsers(subparsers):
     parser_purbf.add_argument("--pu_min_cell_size_percent", action="store", type=float, default=0.005, help="Minimum cell size, specified as a percentage [0..1] of the max(width, height) of the query domain")
     parser_purbf.add_argument("--pu_overlap_increment", action="store", type=float, default=0.001, help="If, after creating the QuadTree, a cell contains less than pu_min_point_in_cell, the radius will be iteratively incremented until this condition is satisfied. This parameter specifies how much the radius of a cell increments at each iteration")
 
+    # Parser for the "mlp" method
+    parser_mlp = subparsers.add_parser("mlp", help="Multi-Layer Perceptron inpainter")
+
+    # Parser for the "poisson" method
+    parser_poisson = subparsers.add_parser("ext_poisson", help="External interpolant calling PoissonRecon PointInterpolant/AdaptiveTreeVisualization tools from the PoissonRecon project (https://github.com/mkazhdan/PoissonRecon)")
+    parser_poisson.add_argument("--workspace", type=str, default=None, help="Workspace where the external exes may generate intermediate files. Defaults to <current_directory>/workspace, and will be deleted after successful execution")
+    parser_poisson.add_argument("--point_interpolant_exe", dest="point_interpolant_exe_path", type=str, default=None, help="Path to the external PointInterpolant executable, if not in the PATH. This executable is part of the PoissonRecon project (https://github.com/mkazhdan/PoissonRecon).")
+    parser_poisson.add_argument("--adaptive_tree_visualization_exe", dest="adaptive_tree_visualization_exe_path", type=str, default=None, help="Path to the external AdaptiveTreeVisualization executable, if not in the PATH. This executable is part of the PoissonRecon project (https://github.com/mkazhdan/PoissonRecon).")
+    parser_poisson.add_argument("--degree", type=int, default=2, help="b-spline degree")
+    parser_poisson.add_argument("--boundary_type", type=str, default="free", help="Boundary type. Available: free (default), dirichlet, neumann")
+    parser_poisson.add_argument("--depth", type=int, default=8, help="Maximum reconstruction depth")
+    parser_poisson.add_argument("--solve_depth", type=int, default=-1, help="Maximum solution depth")
+    parser_poisson.add_argument("--full_depth", type=int, default=5, help="Full depth")
+    parser_poisson.add_argument("--base_depth", type=int, default=None, help="Coarse MG solver depth")
+    parser_poisson.add_argument("--base_v_cycles", type=int, default=4, help="Coarse MG solver v-cycles")
+    parser_poisson.add_argument("--scale_factor", type=float, default=1.1, help="Scale factor")
+    # parser_poisson.add_argument("--value_weight", type=float, default=1000.0, help="Value weight")
+    # parser_poisson.add_argument("--gradient_weight", type=float, default=1.0, help="Gradient weight")
+    parser_poisson.add_argument("--laplacian_weight", type=float, default=0.0, help="Laplacian weight")
+    parser_poisson.add_argument("--bi_laplacian_weight", type=float, default=1.0, help="Bi-Laplacian weight")
+    parser_poisson.add_argument("--iters", type=int, default=8, help="Iterations")
+    parser_poisson.add_argument("--exact", action="store_true", dest="exact", help="Use exact interpolation (approximation otherwise)")
+    parser_poisson.add_argument("--parallel_type", type=str, default="openmp", help="Parallel type. Available: openmp (default), async, none")
+    parser_poisson.add_argument("--schedule_type", type=str, default="static", help="Schedule type. Available: static, dynamic (default)")
+    parser_poisson.add_argument("--chunk_size", type=int, default=128, help="Chunk size")
+    parser_poisson.add_argument("--cg_accuracy", type=float, default=0.001, help="CG solver accuracy")
+    parser_poisson.add_argument("--max_memory", type=int, default=0, help="Maximum memory in GB")
+    parser_poisson.add_argument("--in_core", action="store_true", dest="in_core", help="Read input data in-core, streamed otherwise")
+    
+    parser_poisson = add_common_fd_pde_inpainters_args(parser_poisson)
+    
     # Parser for the "harmonic" method
     parser_harmonic = subparsers.add_parser("harmonic", help="Harmonic inpainter")
     parser_harmonic.add_argument("--update_step_size", type=float, default=0.2, help="Update step size")

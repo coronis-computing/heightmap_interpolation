@@ -60,3 +60,7 @@ class Interpolant(ABC):
             Interpolated values at (x, y)
         """
         pass
+
+    def cleanup(self):
+        """Optional cleanup function to be implemented by interpolants that need it"""
+        pass

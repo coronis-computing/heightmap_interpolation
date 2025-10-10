@@ -99,9 +99,8 @@ def write_mask(input_file, output_file, new_interpolation_flag, elevation_var, i
     out_ds.close()
 
 
-def main():
-    """Simple GUI for removing parts of a map, in order to test the interpolation algorithms on known data"""
-    parser = argparse.ArgumentParser()
+def main():    
+    parser = argparse.ArgumentParser(description="Simple GUI for removing parts of a map, in order to test the interpolation algorithms on known data")
     parser.add_argument('input_file', help="The input elevation map to inpaint (in NetCDF4 format)")
     parser.add_argument("-o","--output_file", dest="output_file", action="store", type=str, required=True,
                         help="Output NetCDF file with erased areas")
