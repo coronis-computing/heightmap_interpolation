@@ -1,39 +1,20 @@
-import numpy as np
-import scipy.ndimage.filters as spfilters
-from numpy.fft  import fft2, ifft2
 import cv2
+import numpy as np
 
 # --> Kernels <--
 backward_diff_kernel_1d = [-1, 1, 0]
 forward_diff_kernel_1d = [0, -1, 1]
 centered_diff_kernel_1d = [-1, 0, 1]
-backward_diff_kernel_2d_horz = np.array([[0, 0, 0],
-                                    [-1, 1, 0],
-                                    [0, 0, 0]])
-forward_diff_kernel_2d_horz = np.array([[0, 0, 0],
-                                   [0, -1, 1],
-                                   [0, 0, 0]])
-centered_diff_kernel_2d_horz = np.array([[0, 0, 0],
-                                    [-1, 0, 1],
-                                    [0, 0, 0]])
-backward_diff_kernel_2d_vert = np.array([[0, -1, 0],
-                                         [0, 1, 0],
-                                         [0, 0, 0]])
-forward_diff_kernel_2d_vert = np.array([[0, 0, 0],
-                                        [0, -1, 0],
-                                        [0, 1, 0]])
-centered_diff_kernel_2d_vert = np.array([[0, -1, 0],
-                                         [0, 0, 0],
-                                         [0, 1, 0]])
-laplacian_kernel_2d = np.array([[0.0, 1.0, 0],
-                                [1.0, -4.0, 1.0],
-                                [0.0, 1.0, 0]])
-laplacian_kernel_1d_cv_horz = np.array([[0, 0, 0],
-                                        [1.0, -2.0, 1.0],
-                                        [0, 0, 0]])
-laplacian_kernel_1d_cv_vert = np.array([[0, 1.0, 0],
-                                        [0, -2.0, 0],
-                                        [0, 1.0, 0]])
+backward_diff_kernel_2d_horz = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
+forward_diff_kernel_2d_horz = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
+centered_diff_kernel_2d_horz = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
+backward_diff_kernel_2d_vert = np.array([[0, -1, 0], [0, 1, 0], [0, 0, 0]])
+forward_diff_kernel_2d_vert = np.array([[0, 0, 0], [0, -1, 0], [0, 1, 0]])
+centered_diff_kernel_2d_vert = np.array([[0, -1, 0], [0, 0, 0], [0, 1, 0]])
+laplacian_kernel_2d = np.array([[0.0, 1.0, 0], [1.0, -4.0, 1.0], [0.0, 1.0, 0]])
+laplacian_kernel_1d_cv_horz = np.array([[0, 0, 0], [1.0, -2.0, 1.0], [0, 0, 0]])
+laplacian_kernel_1d_cv_vert = np.array([[0, 1.0, 0], [0, -2.0, 0], [0, 1.0, 0]])
+
 
 # --> Differential operators <--
 def gradient(f, **kwargs):
@@ -103,12 +84,14 @@ def divergence(f):
     # return np.ufunc.reduce(np.add, [np.gradient(f[i], axis=i) for i in range(num_dims)])
     # return np.ufunc.reduce(np.add, [np.diff(f[i], axis=i) for i in range(num_dims)])
     # return np.ufunc.reduce(np.add, [scipy.ndimage.filters.sobel(f[i], axis=i)/8.0 for i in range(num_dims)])
-    return np.ufunc.reduce(np.add, [gradient(f[i], axis=i, order=1) for i in range(num_dims)])
+    return np.ufunc.reduce(
+        np.add, [gradient(f[i], axis=i, order=1) for i in range(num_dims)]
+    )
 
 
 # Code from https://laurentperrinet.github.io/sciblog/posts/2017-09-20-the-fastest-2d-convolution-in-the-world.html
 # def np_fftconvolve(A, B):
-    # return np.real(ifft2(fft2(A)*fft2(B, s=A.shape)))
+# return np.real(ifft2(fft2(A)*fft2(B, s=A.shape)))
 
 # Code from https://stackoverflow.com/questions/40703751/using-fourier-transforms-to-do-convolution
 # def np_fftconvolve(x, y):
@@ -128,13 +111,14 @@ def divergence(f):
 #
 #     return result.real
 
+
 def my_laplacian(f):
     # ux = spfilters.convolve1d(f, laplacian_kernel_1d, axis=0)
     # uy = spfilters.convolve1d(f, laplacian_kernel_1d, axis=1)
     # return ux+uy
     ux = cv2.filter2D(f, -1, laplacian_kernel_1d_cv_horz)
     uy = cv2.filter2D(f, -1, laplacian_kernel_1d_cv_vert)
-    return ux+uy
+    return ux + uy
 
 
 class DifferentialOperators(object):
@@ -144,7 +128,6 @@ class DifferentialOperators(object):
         self.convolver = convolver
 
     def gradient(self, f, mask=None, axis=-1, order=0):
-
         # First derivatives in X/Y
         if axis == 0:
             if order == 0:
@@ -184,4 +167,7 @@ class DifferentialOperators(object):
         # return np.ufunc.reduce(np.add, [np.gradient(f[i], axis=i) for i in range(num_dims)])
         # return np.ufunc.reduce(np.add, [np.diff(f[i], axis=i) for i in range(num_dims)])
         # return np.ufunc.reduce(np.add, [scipy.ndimage.filters.sobel(f[i], axis=i)/8.0 for i in range(num_dims)])
-        return np.ufunc.reduce(np.add, [self.gradient(f[i], mask, axis=i, order=1) for i in range(num_dims)])
+        return np.ufunc.reduce(
+            np.add,
+            [self.gradient(f[i], mask, axis=i, order=1) for i in range(num_dims)],
+        )

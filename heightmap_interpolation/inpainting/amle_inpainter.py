@@ -1,17 +1,18 @@
-from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
-from scipy.ndimage.filters import convolve1d
 import numpy as np
+from scipy.ndimage.filters import convolve1d
+
 import heightmap_interpolation.inpainting.differential as diff
+from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
 
 
 class AMLEInpainter(FDPDEInpainter):
-    """ Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
+    """Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
 
-        Implements the method in:
-            Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
-            Interpolation of Digital Elevation Models Using AMLE and Related
-            Methods. IEEE TRANSACTIONS ON GEOSCIENCE AND REMOTE SENSING, VOL. 40,
-            NO. 2, FEBRUARY 2002
+    Implements the method in:
+        Andrés Almansa, Frédéric Cao, Yann Gousseau, and Bernard Rougé.
+        Interpolation of Digital Elevation Models Using AMLE and Related
+        Methods. IEEE TRANSACTIONS ON GEOSCIENCE AND REMOTE SENSING, VOL. 40,
+        NO. 2, FEBRUARY 2002
     """
 
     def __init__(self, **kwargs):
@@ -52,9 +53,8 @@ class AMLEInpainter(FDPDEInpainter):
             v1 = self.convolver(f, diff.centered_diff_kernel_2d_horz, mask)
 
         # Normalize the direction field
-        dennormal = np.sqrt(v0*v0 + v1*v1 + 1e-15)
-        v0 = v0/dennormal
-        v1 = v1/dennormal
+        dennormal = np.sqrt(v0 * v0 + v1 * v1 + 1e-15)
+        v0 = v0 / dennormal
+        v1 = v1 / dennormal
 
-        return uxx*v0*v0 + uyy*v1*v1 + (uxy+uyx)*v0*v1
-
+        return uxx * v0 * v0 + uyy * v1 * v1 + (uxy + uyx) * v0 * v1

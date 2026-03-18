@@ -30,7 +30,7 @@ def green_rbf(r):
     if np.isscalar(r) and r == 0:
         return 0
 
-    fx = np.power(r, 2)*(np.log(r)-1)
+    fx = np.power(r, 2) * (np.log(r) - 1)
 
     # Fix singularity of Green's function at 0
     if not np.isscalar(r):

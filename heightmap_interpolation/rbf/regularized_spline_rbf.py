@@ -17,6 +17,7 @@
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
 import math
+
 import numpy as np
 import scipy.special
 
@@ -46,5 +47,8 @@ def regularized_spline_rbf(r, e):
         r[r < 1e-15] = 1e-15
 
     Ce = 0.5772156649015328606065120900824  # Value of the euler constant
-    fx = (1 / 2 * math.pi) * ((r*r/4)*(np.log(r/2*e) + Ce - 1) + e*e*(scipy.special.kn(0, r/e) + Ce + np.log(r/2*math.pi)))
+    fx = (1 / 2 * math.pi) * (
+        (r * r / 4) * (np.log(r / 2 * e) + Ce - 1)
+        + e * e * (scipy.special.kn(0, r / e) + Ce + np.log(r / 2 * math.pi))
+    )
     return fx

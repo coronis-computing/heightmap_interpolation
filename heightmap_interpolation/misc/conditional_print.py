@@ -18,15 +18,15 @@
 
 import sys
 
-class ConditionalPrint:
 
+class ConditionalPrint:
     def __init__(self, verbose):
         self.verbose = verbose
 
-    def print(self, *objects, sep=' ', end='\n', file=sys.stdout, flush=False):
+    def print(self, *objects, sep=" ", end="\n", file=sys.stdout, flush=False):
         if self.verbose:
             print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     def backspace(self, n):
         if self.verbose:
-            sys.stdout.write((b'\x08' * n).decode())
+            sys.stdout.write((b"\x08" * n).decode())

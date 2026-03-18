@@ -16,14 +16,14 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from heightmap_interpolation.interpolants.interpolant import Interpolant
 from scipy.interpolate import NearestNDInterpolator
+
+from heightmap_interpolation.interpolants.interpolant import Interpolant
 
 
 class NearestNeighborInterpolant(Interpolant):
-
     def __init__(self, x, y, z, rescale=False):
-        """ Constructor """
+        """Constructor"""
 
         # Base class constructor
         super().__init__(x, y, z)

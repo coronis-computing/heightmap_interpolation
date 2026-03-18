@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 
-class OpenCVInpainter():
+class OpenCVInpainter:
     """Interphase for using OpenCV's builtin inpainting functions"""
 
     def __init__(self, **kwargs):
@@ -28,14 +28,14 @@ class OpenCVInpainter():
         return config
 
 
-class OpenCVXPhotoInpainter():
+class OpenCVXPhotoInpainter:
     def __init__(self, **kwargs):
         method = kwargs.pop("method", "shiftmap")
         if method == "shiftmap":
             self.method = cv2.xphoto.INPAINT_SHIFTMAP
 
     def inpaint(self, f, mask):
-        mask = ~mask # Do not invert! xphoto.inpaint expects the mask as the inverse of the photo module...
+        mask = ~mask  # Do not invert! xphoto.inpaint expects the mask as the inverse of the photo module...
         mask_cv = mask.astype(np.uint8)  # convert to an unsigned byte
         mask_cv *= 255
         mask_cv = cv2.bitwise_not(mask_cv)

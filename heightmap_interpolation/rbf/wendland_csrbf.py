@@ -23,13 +23,13 @@ def wendland_csrbf(r, e):
     """Wendland's Compactly-Supported RBF"""
 
     if np.isscalar(r):
-        return (max(1 - r / e, 0)**4) * (1 + 4 * r / e)
+        return (max(1 - r / e, 0) ** 4) * (1 + 4 * r / e)
 
     original_shape = r.shape
     rf = r.reshape(-1, 1)
-    a = np.hstack(((1-rf/e), np.zeros(rf.shape)))
+    a = np.hstack(((1 - rf / e), np.zeros(rf.shape)))
     a = np.amax(a, axis=1)
     a = a.reshape(-1, 1)
-    fx = np.power(a, 4)*(1+4*rf/e)
+    fx = np.power(a, 4) * (1 + 4 * rf / e)
 
     return fx.reshape(original_shape)

@@ -590,9 +590,7 @@ Disadvantages
 +++++++++++++
 
 * Slower execution time than other inpainters.
-* Contrary to the other inpainters, for which the default values of ``--update_step_size`` parameter should work in any condition,
-there might be cases where the default ``--update_step_size`` may lead to no convergence. If you see that the solver does not converge for your data
-(it gets to the maximum number of iterations set in ``--max_iters`` parameter), try lowering it a bit an re-execute.
+* Contrary to the other inpainters, for which the default values of ``--update_step_size`` parameter should work in any condition, there might be cases where the default ``--update_step_size`` may lead to no convergence. If you see that the solver does not converge for your data (it gets to the maximum number of iterations set in ``--max_iters`` parameter), try lowering it a bit an re-execute.
 
 
 .. _other_inpainters:

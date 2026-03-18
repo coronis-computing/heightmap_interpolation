@@ -1,8 +1,8 @@
 import numpy as np
-from numba import double, boolean, njit, prange
+from numba import njit, prange
 
 
-#@njit(parallel=True) # DevNote: The overhead of parallelizing does not seem to compensate...
+# @njit(parallel=True) # DevNote: The overhead of parallelizing does not seem to compensate...
 @njit()
 def update_at_mask(image, f, mask):
     M, N = image.shape

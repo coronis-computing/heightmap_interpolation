@@ -1,8 +1,8 @@
 import numpy as np
-from numba import double, boolean, njit, prange, cuda, guvectorize
+from numba import cuda, guvectorize, njit, prange
 
 
-#@njit(double[:, :](double[:, :], boolean[:, :], double[:, :]), parallel=True, nogil=True, fastmath=True)
+# @njit(double[:, :](double[:, :], boolean[:, :], double[:, :]), parallel=True, nogil=True, fastmath=True)
 def convolve_at_mask(image, mask, filt):
     """Naive 2D convolution, but applied just at the points defined by the mask with the same behaviour at borders as OpenCV's filter2D default behaviour (BORDER_REFLECT_101)."""
     M, N = image.shape
@@ -16,15 +16,17 @@ def convolve_at_mask(image, mask, filt):
                 num = 0.0
                 for ii in prange(Mf):
                     for jj in prange(Nf):
-                        img_ind_i = abs(i-Mf2+ii)
-                        if img_ind_i > M-1:
-                            mod_i = img_ind_i % (M-1)
-                            img_ind_i = M-1-mod_i
-                        img_ind_j = abs(j-Nf2+jj)
-                        if img_ind_j > N-1:
-                            mod_j = img_ind_j % (N-1)
-                            img_ind_j = N-1-mod_j
-                        num += (filt[Mf-1-ii, Nf-1-jj] * image[img_ind_i, img_ind_j])
+                        img_ind_i = abs(i - Mf2 + ii)
+                        if img_ind_i > M - 1:
+                            mod_i = img_ind_i % (M - 1)
+                            img_ind_i = M - 1 - mod_i
+                        img_ind_j = abs(j - Nf2 + jj)
+                        if img_ind_j > N - 1:
+                            mod_j = img_ind_j % (N - 1)
+                            img_ind_j = N - 1 - mod_j
+                        num += (
+                            filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
+                        )
                 result[i, j] = num
     # for i in prange(Mf2, M - Mf2):
     #     for j in prange(Nf2, N - Nf2):
@@ -35,6 +37,7 @@ def convolve_at_mask(image, mask, filt):
     #                     num += (filt[Mf-1-ii, Nf-1-jj] * image[i-Mf2+ii, j-Nf2+jj])
     #             result[i, j] = num
     return result
+
 
 @njit(parallel=False, nogil=True, fastmath=True)
 def nb_convolve_at_mask(image, mask, filt):
@@ -58,7 +61,9 @@ def nb_convolve_at_mask(image, mask, filt):
                         if img_ind_j > N - 1:
                             mod_j = img_ind_j % (N - 1)
                             img_ind_j = N - 1 - mod_j
-                        num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+                        num += (
+                            filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
+                        )
                 result[i, j] = num
     return result
 
@@ -85,17 +90,20 @@ def nb_convolve_at_mask_where(image, mask, filt):
                 if img_ind_j > N - 1:
                     mod_j = img_ind_j % (N - 1)
                     img_ind_j = N - 1 - mod_j
-                num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+                num += filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
         result[i, j] = num
     return result
 
 
 @guvectorize(
-    ["void(float32[:,:], boolean[:,:], float32[:,:], float32[:,:])",
-     "void(float32[:,:], boolean[:,:], float64[:,:], float32[:,:])",
-     "void(float64[:,:], boolean[:,:], float64[:,:], float64[:,:])"],
+    [
+        "void(float32[:,:], boolean[:,:], float32[:,:], float32[:,:])",
+        "void(float32[:,:], boolean[:,:], float64[:,:], float32[:,:])",
+        "void(float64[:,:], boolean[:,:], float64[:,:], float64[:,:])",
+    ],
     "(n,m),(n,m),(k,k)->(n,m)",
-    nopython=True)
+    nopython=True,
+)
 def nb_convolve_at_mask_guvec(image, mask, filt, result):
     """Fast 2D convolution using Numba as a guvector, but applied just at the points defined by the mask with the same behaviour at borders as OpenCV's filter2D default behaviour (BORDER_REFLECT_101)."""
     M, N = image.shape
@@ -116,7 +124,9 @@ def nb_convolve_at_mask_guvec(image, mask, filt, result):
                         if img_ind_j > N - 1:
                             mod_j = img_ind_j % (N - 1)
                             img_ind_j = N - 1 - mod_j
-                        num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+                        num += (
+                            filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
+                        )
                 result[i, j] = num
             else:
                 result[i, j] = image[i, j]
@@ -144,7 +154,9 @@ def nb_convolve_at_mask_parallel(image, mask, filt):
                         if img_ind_j > N - 1:
                             mod_j = img_ind_j % (N - 1)
                             img_ind_j = N - 1 - mod_j
-                        num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+                        num += (
+                            filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
+                        )
                 result[i, j] = num
     return result
 
@@ -189,6 +201,7 @@ def nb_convolve_at_mask_cuda(image, mask, filt):
     # kernel_update_at_mask[block_size, ](image, mask, filt, result)
     return result
 
+
 @cuda.jit
 def kernel_update_at_mask(image, mask, filt, result):
     i, j = cuda.grid(2)
@@ -208,5 +221,5 @@ def kernel_update_at_mask(image, mask, filt, result):
                 if img_ind_j > N - 1:
                     mod_j = img_ind_j % (N - 1)
                     img_ind_j = N - 1 - mod_j
-                num += (filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j])
+                num += filt[Mf - 1 - ii, Nf - 1 - jj] * image[img_ind_i, img_ind_j]
         result[i, j] = num

@@ -16,22 +16,30 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from heightmap_interpolation.interpolants.interpolant import Interpolant
-from scipy.interpolate import CloughTocher2DInterpolator
 import numpy as np
+from scipy.interpolate import CloughTocher2DInterpolator
+
+from heightmap_interpolation.interpolants.interpolant import Interpolant
 
 
 class CubicInterpolant(Interpolant):
-
-    def __init__(self, x, y, z, fill_value=np.nan, tol=1e-06, maxiter=400, rescale=False):
-        """ Constructor """
+    def __init__(
+        self, x, y, z, fill_value=np.nan, tol=1e-06, maxiter=400, rescale=False
+    ):
+        """Constructor"""
 
         # Base class constructor
         super().__init__(x, y, z)
 
         # Create the interpolant
-        self.interpolant = CloughTocher2DInterpolator(list(zip(x, y)), z,
-                                                      fill_value=fill_value, tol=tol, maxiter=maxiter, rescale=rescale)
+        self.interpolant = CloughTocher2DInterpolator(
+            list(zip(x, y)),
+            z,
+            fill_value=fill_value,
+            tol=tol,
+            maxiter=maxiter,
+            rescale=rescale,
+        )
 
     def __call__(self, x, y):
         """Evaluates the interpolant at the x, y locations"""

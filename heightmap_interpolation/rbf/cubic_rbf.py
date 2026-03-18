@@ -19,4 +19,4 @@
 
 def cubic_rbf(r):
     """Cubic RBF"""
-    return r*r*r
+    return r * r * r

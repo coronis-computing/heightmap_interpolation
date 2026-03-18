@@ -16,22 +16,23 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from heightmap_interpolation.interpolants.interpolant import Interpolant
-from scipy.interpolate import LinearNDInterpolator
 import numpy as np
+from scipy.interpolate import LinearNDInterpolator
+
+from heightmap_interpolation.interpolants.interpolant import Interpolant
 
 
 class LinearInterpolant(Interpolant):
-
     def __init__(self, x, y, z, fill_value=np.nan, rescale=False):
-        """ Constructor """
+        """Constructor"""
 
         # Base class constructor
         super().__init__(x, y, z)
 
         # Create the interpolant
-        self.interpolant = LinearNDInterpolator(list(zip(x, y)), z,
-                                                fill_value=fill_value, rescale=rescale)
+        self.interpolant = LinearNDInterpolator(
+            list(zip(x, y)), z, fill_value=fill_value, rescale=rescale
+        )
 
     def __call__(self, x, y):
         """Evaluates the interpolant at the x, y locations"""

@@ -16,17 +16,19 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from heightmap_interpolation.interpolants.interpolant import Interpolant
-from heightmap_interpolation.rbf.rbf_type_to_functor import *
-from heightmap_interpolation.polynomials import bivariate_polynomials
-from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_cdist_functor
-from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_pdist_functor
 import numpy as np
-from scipy.linalg import cho_factor, cho_solve
+
+from heightmap_interpolation.interpolants.distance_type_to_functor import (
+    distance_type_to_cdist_functor,
+    distance_type_to_pdist_functor,
+)
+from heightmap_interpolation.interpolants.interpolant import Interpolant
+from heightmap_interpolation.polynomials import bivariate_polynomials
+from heightmap_interpolation.rbf.rbf_type_to_functor import *
 
 
 class RBFInterpolant(Interpolant):
-    """ Radial Basis Function Interpolant
+    """Radial Basis Function Interpolant
 
     Interpolates using the classical Radial Basis Function (RBF) interpolant
 
@@ -71,19 +73,23 @@ class RBFInterpolant(Interpolant):
         # Compose the system of equations
         # - RBF part
         A = np.zeros((n, n))
-        A[np.triu_indices(n, 1)] = rbf_evals # Fill the upper triangular part of the matrix (indexing is row-wise in Python!)
-        A = A+A.T  # Mirror over the diagonal (matrix A is symmetric)
+        A[np.triu_indices(n, 1)] = (
+            rbf_evals  # Fill the upper triangular part of the matrix (indexing is row-wise in Python!)
+        )
+        A = A + A.T  # Mirror over the diagonal (matrix A is symmetric)
         # Compute RBF values at the diagonal (radius == 0)
-        A[np.diag_indices(n)] = self.rbf_fun(0.)
+        A[np.diag_indices(n)] = self.rbf_fun(0.0)
 
         # Regularization?
         if regularization != 0:
-            A = A + np.eye(n)*regularization
+            A = A + np.eye(n) * regularization
 
         b = self.data[:, [2]]
 
         # Polynomial part
-        terms = bivariate_polynomials.terms(poly_deg, self.data[:, [0]], self.data[:, [1]])
+        terms = bivariate_polynomials.terms(
+            poly_deg, self.data[:, [0]], self.data[:, [1]]
+        )
         num_terms = terms.shape[1]
         A = np.append(A, terms, 1)
         termsa = np.hstack((terms.T, np.zeros((num_terms, num_terms))))
@@ -107,7 +113,9 @@ class RBFInterpolant(Interpolant):
             raise ValueError("x and y should have the same number of elements")
 
         if x.shape != y.shape:
-            print("[WARNING] x.shape != y.shape. The size of the output matrix will be that of x")
+            print(
+                "[WARNING] x.shape != y.shape. The size of the output matrix will be that of x"
+            )
 
         # Flatten the data into a column vector
         original_shape = x.shape
@@ -126,7 +134,7 @@ class RBFInterpolant(Interpolant):
         poly_eval = bivariate_polynomials.eval(self.poly, x, y)
 
         # Compute the evaluation
-        z = A@self.weights + poly_eval
+        z = A @ self.weights + poly_eval
 
         # Return z with the same shape as input x
         z = np.reshape(z, original_shape)

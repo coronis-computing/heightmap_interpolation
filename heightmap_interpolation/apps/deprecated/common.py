@@ -20,30 +20,36 @@
 
 # Common functionalities of the inpaint and interpolate apps
 
+import shutil
+
+import geopandas as gpd
 import netCDF4 as nc
 import numpy as np
 from PIL import Image, ImageDraw
-import geopandas as gpd
-import shutil
-gpd.io.file.fiona.drvsupport.supported_drivers['KML'] = 'rw'
+
+gpd.io.file.fiona.drvsupport.supported_drivers["KML"] = "rw"
 
 
 def imageToArray(i):
     """
     Converts a Python Imaging Library array to a numpy array.
     """
-    a = np.fromstring(i.tobytes(), 'b')
+    a = np.fromstring(i.tobytes(), "b")
     a.shape = i.im.size[1], i.im.size[0]
     return a
 
 
 def load_data(param):
     """Loads the data required for interpolation"""
-    return load_data_impl(param.input_file, param.elevation_var, param.interpolate_missing_values, param.areas)
+    return load_data_impl(
+        param.input_file,
+        param.elevation_var,
+        param.interpolate_missing_values,
+        param.areas,
+    )
 
 
-def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas = None):
-
+def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas=None):
     # Read the file
     ds = nc.Dataset(input_file, "r", format="NETCDF4")
 
@@ -69,7 +75,9 @@ def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas 
         # If the elevation field is masked, we just focus on the values of reference/to interpolate
         # that are in the valid area
         if np.ma.is_masked(elevation):
-            mask_int[elevation.mask] = False  # turn to true to interpolate everywhere bathymetry is empty
+            mask_int[elevation.mask] = (
+                False  # turn to true to interpolate everywhere bathymetry is empty
+            )
             mask_ref[elevation.mask] = False
     else:
         if np.ma.is_masked(elevation):
@@ -95,10 +103,15 @@ def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas 
         mask_int.fill(False)
 
         # Read the KML file using geopandas
-        df = gpd.read_file(param.areas, driver='KML')
+        df = gpd.read_file(param.areas, driver="KML")
 
         # Get minimum lat/lon and pixel resolution
-        xmin, ymin, xmax, ymax = [lons_1d.min(), lats_1d.min(), lons_1d.max(), lats_1d.max()]
+        xmin, ymin, xmax, ymax = [
+            lons_1d.min(),
+            lats_1d.min(),
+            lons_1d.max(),
+            lats_1d.max(),
+        ]
         xres = (xmax - xmin) / float(num_lon)
         yres = (ymax - ymin) / float(num_lat)
 
@@ -125,10 +138,26 @@ def load_data_impl(input_file, elevation_var, interpolate_missing_values, areas 
 
 
 def write_results(param, elevation, mask_int):
-    write_results_impl(param.output_file, param.input_file, elevation, mask_int, elevation_var=param.elevation_var, areas=param.areas, interpolate_missing_values=param.interpolate_missing_values)
+    write_results_impl(
+        param.output_file,
+        param.input_file,
+        elevation,
+        mask_int,
+        elevation_var=param.elevation_var,
+        areas=param.areas,
+        interpolate_missing_values=param.interpolate_missing_values,
+    )
 
 
-def write_results_impl(output_file, input_file, elevation, mask_int, elevation_var = "elevation", areas = None, interpolate_missing_values=False):
+def write_results_impl(
+    output_file,
+    input_file,
+    elevation,
+    mask_int,
+    elevation_var="elevation",
+    areas=None,
+    interpolate_missing_values=False,
+):
     # We just want to modify the elevation variable, while retaining the rest of the dataset as is, so the easiest
     # solution is to copy the input file to the destination file, and open it in write mode to change the elevation
     # variable
@@ -143,7 +172,7 @@ def write_results_impl(output_file, input_file, elevation, mask_int, elevation_v
     if areas or interpolate_missing_values:
         # Also update the interpolated areas
         if "interpolation_flag" not in out_ds.variables.keys():
-            out_ds.createVariable('interpolation_flag', 'int8', ('lat', 'lon'))
+            out_ds.createVariable("interpolation_flag", "int8", ("lat", "lon"))
             new_cell_interpolated_flag = out_ds.variables["interpolation_flag"][:]
             new_cell_interpolated_flag[~mask_int] = 0
         else:

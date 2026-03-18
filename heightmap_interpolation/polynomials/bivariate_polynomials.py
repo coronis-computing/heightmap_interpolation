@@ -44,9 +44,22 @@ def terms(degree: int, x, y):
     elif degree == 1:
         terms = np.hstack((x, y, np.ones(x.shape)))  # Linear
     elif degree == 2:
-        terms = np.hstack((x*x, y*y, x*y, x, y, np.ones(x.shape)))  # Quadratic
+        terms = np.hstack((x * x, y * y, x * y, x, y, np.ones(x.shape)))  # Quadratic
     elif degree == 3:
-        terms = np.hstack((x*x*x, y*y*y, x*x*y, x*y*y, x*x, y*y, x*y, x, y, np.ones(x.shape)))  # Cubic
+        terms = np.hstack(
+            (
+                x * x * x,
+                y * y * y,
+                x * x * y,
+                x * y * y,
+                x * x,
+                y * y,
+                x * y,
+                x,
+                y,
+                np.ones(x.shape),
+            )
+        )  # Cubic
 
     return terms
 
@@ -68,9 +81,9 @@ def eval(coeffs, x, y):
 
     # Infer the degree of the polynomial from the number of coefficients
     switcher = {
-        1: 0,   # Constant
-        3: 1,   # Linear
-        6: 2,   # Quadratic
+        1: 0,  # Constant
+        3: 1,  # Linear
+        6: 2,  # Quadratic
         10: 3,  # Cubic
     }
     degree = switcher[coeffs.size]

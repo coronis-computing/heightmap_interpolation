@@ -17,15 +17,18 @@
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
 import math
+
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 import numpy as np
+
+from heightmap_interpolation.interpolants.distance_type_to_functor import (
+    distance_type_to_cdist_functor,
+    distance_type_to_functor,
+)
 from heightmap_interpolation.interpolants.interpolant import Interpolant
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
-from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_cdist_functor
-from heightmap_interpolation.interpolants.distance_type_to_functor import distance_type_to_functor
 from heightmap_interpolation.rbf.rbf_type_to_functor import *
-import haversine.haversine
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 
 class QTNode:
@@ -61,32 +64,36 @@ class QTNode:
 
     def get_center(self):
         """Gets the center point of the node"""
-        return np.array([self.x+(self.wh/2), self.y+(self.wh/2)])
+        return np.array([self.x + (self.wh / 2), self.y + (self.wh / 2)])
 
     def get_radius(self):
-        """ Gets the radius of the node using the internal distance function (required while evaluating the RBF) it also applies the "overlap" factor"""
-        radius = self.get_diagonal()*0.5
-        return radius+radius*self.overlap
+        """Gets the radius of the node using the internal distance function (required while evaluating the RBF) it also applies the "overlap" factor"""
+        radius = self.get_diagonal() * 0.5
+        return radius + radius * self.overlap
 
     def get_diagonal(self):
         """Gets the length of the diagonal of the square represented by the node (computed using the Node's distance function)"""
-        return self.dist_fun(np.array([self.x, self.y]), np.array([self.x+self.wh, self.y+self.wh]))
+        return self.dist_fun(
+            np.array([self.x, self.y]), np.array([self.x + self.wh, self.y + self.wh])
+        )
 
     def get_euclidean_radius(self):
-        """ Gets the radius of the node using Euclidean distance"""
+        """Gets the radius of the node using Euclidean distance"""
         radius = self.get_euclidean_diagonal() * 0.5
         return radius + radius * self.overlap
 
     def get_euclidean_diagonal(self):
         """Gets the length of the diagonal of the square represented by the node (computed using Euclidean distance)"""
-        return math.sqrt((self.x-(self.x+self.wh))**2+(self.y-(self.y+self.wh))**2)
+        return math.sqrt(
+            (self.x - (self.x + self.wh)) ** 2 + (self.y - (self.y + self.wh)) ** 2
+        )
 
     def points_in_node_inds(self, pts):
         """Computes the indices of the points falling within the circle that this QTNode represents"""
         center = self.get_center()
         radius = self.get_euclidean_radius()
 
-        rads = np.linalg.norm(pts[:, :2]-center, axis=1)
+        rads = np.linalg.norm(pts[:, :2] - center, axis=1)
         return rads <= radius
 
     def is_leaf(self):
@@ -96,12 +103,12 @@ class QTNode:
             return True
 
     def subdivide(self, min_pts, min_cell_side_length):
-        #End of recursion if we have less than minimum number of points in the cell OR if cell size is smaller than the minimum
+        # End of recursion if we have less than minimum number of points in the cell OR if cell size is smaller than the minimum
         if self.pts.shape[0] < min_pts or self.wh < min_cell_side_length:
             return
 
         # Halve the width/height of the current node
-        wh = self.wh/2
+        wh = self.wh / 2
 
         # Create the 4 childrens of this node and span subdivision
         sw_node = QTNode(self.x, self.y, wh, self.pts, self.dist_fun, self.overlap)
@@ -110,7 +117,9 @@ class QTNode:
         se_node.subdivide(min_pts, min_cell_side_length)
         nw_node = QTNode(self.x, self.y + wh, wh, self.pts, self.dist_fun, self.overlap)
         nw_node.subdivide(min_pts, min_cell_side_length)
-        ne_node = QTNode(self.x + wh, self.y + wh, wh, self.pts, self.dist_fun, self.overlap)
+        ne_node = QTNode(
+            self.x + wh, self.y + wh, wh, self.pts, self.dist_fun, self.overlap
+        )
         ne_node.subdivide(min_pts, min_cell_side_length)
 
         # If, after subdivision, NONE of the children contains a point, we also end recursion
@@ -118,7 +127,6 @@ class QTNode:
         #     return
 
         self.childs = [sw_node, se_node, nw_node, ne_node]
-
 
         # sw_node = QTNode(self.x, self.y, wh, self.pts, self.dist_fun, self.overlap)
         # if sw_node.pts.shape[0] < 5:
@@ -147,7 +155,9 @@ class QTNode:
         if self.is_leaf():
             if self.pts is not None and self.pts.shape[0] > 5:
                 # Compute the local RBF interpolant corresponding to this QTNode
-                self.rbf_interp = RBFInterpolant(self.pts[:, [0]], self.pts[:, [1]], self.pts[:, [2]], **kwargs)
+                self.rbf_interp = RBFInterpolant(
+                    self.pts[:, [0]], self.pts[:, [1]], self.pts[:, [2]], **kwargs
+                )
                 # Create the weighting RBF (a Wendland RBF with the support == node's radius)
                 r = self.get_radius()
                 self.weighting_rbf = rbf_type_to_functor("wendland", r)
@@ -164,7 +174,7 @@ class QTNode:
         else:
             nodes = []
             for child in self.childs:
-                nodes += (child.get_leaves())
+                nodes += child.get_leaves()
         return nodes
 
     def get_leaves_with_samples(self):
@@ -177,7 +187,7 @@ class QTNode:
         else:
             nodes = []
             for child in self.childs:
-                nodes += (child.get_leaves_with_samples())
+                nodes += child.get_leaves_with_samples()
         return nodes
 
     def free_memory(self):
@@ -204,10 +214,12 @@ class QTNode:
         radius_b = node.get_radius()
 
         # Distance between centers
-        d = math.sqrt( (center_b[0]-center_a[0])**2 + (center_b[1]-center_a[1])**2)
+        d = math.sqrt(
+            (center_b[0] - center_a[0]) ** 2 + (center_b[1] - center_a[1]) ** 2
+        )
 
         # Input node is inside node self if its radius is larger than the sum of the distance between centers and the radius of the input node
-        return radius_a >= d+radius_b
+        return radius_a >= d + radius_b
 
 
 class QuadTreePURBFInterpolant(Interpolant):
@@ -230,7 +242,9 @@ class QuadTreePURBFInterpolant(Interpolant):
         if overlap < 0:
             raise ValueError("overlap should be greater than zero")
         if min_cell_size_percent > 1 or min_cell_size_percent < 0:
-            raise ValueError("min_cell_size_percent should be a number between zero and one")
+            raise ValueError(
+                "min_cell_size_percent should be a number between zero and one"
+            )
         if domain:
             if len(domain) != 3:
                 raise ValueError("domain must be a 3-elements list")
@@ -255,10 +269,12 @@ class QuadTreePURBFInterpolant(Interpolant):
             wh = domain[2]
 
         # Create the root node of the Quad Tree
-        self.root = QTNode(domain[0], domain[1], domain[2], self.data, self.dist_fun, overlap)
+        self.root = QTNode(
+            domain[0], domain[1], domain[2], self.data, self.dist_fun, overlap
+        )
 
         # Subdivide the root node (and effectively create the tree top to bottom)
-        self.root.subdivide(min_pts, wh*min_cell_size_percent)
+        self.root.subdivide(min_pts, wh * min_cell_size_percent)
 
         # Remove stored points in non-leaf nodes, from now on we will just use leaves
         self.root.free_memory()
@@ -296,7 +312,7 @@ class QuadTreePURBFInterpolant(Interpolant):
                 # Increase the overlap until the radius contains the required number of points (may be more!)
                 center = leaves[i].get_center()
                 while num_pts < min_pts:
-                    overlap = overlap+self.overlap_inc
+                    overlap = overlap + self.overlap_inc
                     leaves[i].overlap = overlap
                     radius = leaves[i].get_radius()
                     ind = tree.query_ball_point(center, radius)
@@ -316,10 +332,12 @@ class QuadTreePURBFInterpolant(Interpolant):
 
                 # And delete them
                 for index in sorted(inds_to_delete, reverse=True):
-                    leaves[index].pts = None # We effectively disregard this leaf by setting its points to None
+                    leaves[
+                        index
+                    ].pts = None  # We effectively disregard this leaf by setting its points to None
                     del leaves[index]
                 # num_updated_before_i = 0
-            i = i-num_updated_before_i+1
+            i = i - num_updated_before_i + 1
 
     def plot(self, ax=None):
         """Plot the QuadTree"""
@@ -336,13 +354,21 @@ class QuadTreePURBFInterpolant(Interpolant):
                     max_samples_leaf = num_pts_leaf
                 # if num_pts_leaf > 0:
                 #     print("Num. pts in leaf = " + str(num_pts_leaf))
-                ax.add_patch(patches.Rectangle((leaf.x, leaf.y), leaf.wh, leaf.wh, fill=False))
-                ax.add_patch(patches.Circle((leaf.x+leaf.wh*0.5, leaf.y+leaf.wh*0.5), leaf.get_euclidean_radius(), fill=False))
+                ax.add_patch(
+                    patches.Rectangle((leaf.x, leaf.y), leaf.wh, leaf.wh, fill=False)
+                )
+                ax.add_patch(
+                    patches.Circle(
+                        (leaf.x + leaf.wh * 0.5, leaf.y + leaf.wh * 0.5),
+                        leaf.get_euclidean_radius(),
+                        fill=False,
+                    )
+                )
                 # plt.plot(leaf.pts[:, 0], leaf.pts[:, 1], 'ro')
                 # ax.axis("equal")
                 # plt.show()
         ax.axis("equal")
-        plt.plot(self.data[:, 0], self.data[:, 1], 'ro')
+        plt.plot(self.data[:, 0], self.data[:, 1], "ro")
         plt.show(block=False)
 
     def show_interpolant_stats(self):
@@ -371,13 +397,15 @@ class QuadTreePURBFInterpolant(Interpolant):
         print("  - Num. local RBF =", str(len(leaves)))
 
     def __call__(self, x, y):
-    # def new_call(self, x, y):
+        # def new_call(self, x, y):
         # Check sizes
         if x.size != y.size:
             raise ValueError("x and y should have the same number of elements")
 
         if x.shape != y.shape:
-            print("[WARNING] x.shape != y.shape. The size of the output matrix will be that of x")
+            print(
+                "[WARNING] x.shape != y.shape. The size of the output matrix will be that of x"
+            )
 
         # Reshape input, for convenience
         orig_shape = x.shape
@@ -418,17 +446,18 @@ class QuadTreePURBFInterpolant(Interpolant):
             weights = leaves[i].weighting_rbf(d)
 
             # Apply the weights to the corresponding function and accumulate
-            f[ind, :] = f[ind, :] + rbf_eval*weights
+            f[ind, :] = f[ind, :] + rbf_eval * weights
 
             # Accumulate the weights for the final division
             w[ind, :] = w[ind, :] + weights
 
         # Apply the final division by the accumulated weights
-        z = f/w # Here a division by w = 0 will occur for those points outside the domain covered by the quadtree. Since this will result in a NaN, we use this value as an indicator that the z is undefined at that point.
+        z = (
+            f / w
+        )  # Here a division by w = 0 will occur for those points outside the domain covered by the quadtree. Since this will result in a NaN, we use this value as an indicator that the z is undefined at that point.
 
         # Get z back to the original shape of the input
         return z.reshape(orig_shape)
-
 
     # def old_call(self, x, y):
     # # def __call__(self, x, y):

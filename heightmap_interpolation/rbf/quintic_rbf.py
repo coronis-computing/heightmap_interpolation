@@ -19,4 +19,4 @@
 
 def quintic_rbf(r):
     """Quintic RBF"""
-    return r*r*r*r*r
+    return r * r * r * r * r

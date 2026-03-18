@@ -1,6 +1,9 @@
 import argparse
-from heightmap_interpolation.reporter.deprecated.inpaint_netcdf_reporter import InpaintingReporter
 import json
+
+from heightmap_interpolation.reporter.deprecated.inpaint_netcdf_reporter import (
+    InpaintingReporter,
+)
 
 
 def report(param):
@@ -22,9 +25,14 @@ def report(param):
 def parse_args(args=None):
     # Parameters
     parser = argparse.ArgumentParser(
-        description="Creates a report applying different inpainting methods to different datasets, according to the options set in the configuration file")
-    parser.add_argument("config_file", action="store", type=str,
-                        help="Reporter configuration file in JSON format")
+        description="Creates a report applying different inpainting methods to different datasets, according to the options set in the configuration file"
+    )
+    parser.add_argument(
+        "config_file",
+        action="store",
+        type=str,
+        help="Reporter configuration file in JSON format",
+    )
 
     param = parser.parse_args(args)
     return param

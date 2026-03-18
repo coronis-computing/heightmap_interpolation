@@ -24,4 +24,4 @@ def multiquadric_rbf(r, e):
     if e == 0:
         raise ValueError("Epsilon cannot be zero.")
 
-    return np.sqrt(np.power((r/e), 2))
+    return np.sqrt(np.power((r / e), 2))

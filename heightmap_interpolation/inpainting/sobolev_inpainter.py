@@ -1,14 +1,8 @@
 from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
-from scipy.ndimage.filters import laplace
-from heightmap_interpolation.inpainting.differential import divergence, gradient, my_laplacian
 import heightmap_interpolation.inpainting.differential as diff
-import scipy.signal
-import numpy as np
-import cv2
 
 
 class SobolevInpainter(FDPDEInpainter):
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -33,4 +27,3 @@ class SobolevInpainter(FDPDEInpainter):
         # return scipy.signal.oaconvolve(f, self.laplacian_stencil, mode='same')
         # - Using scipy.signal.fftconvolve function
         # return scipy.signal.fftconvolve(f, self.laplacian_stencil, mode='same')
-

@@ -26,7 +26,7 @@ def thin_plate_spline_rbf(r):
         return 0
 
     fx = np.zeros(r.shape)
-    ind = r != 0 # Non-zero indices
+    ind = r != 0  # Non-zero indices
     fx[ind] = np.power(r[ind], 2) * np.log(r[ind])
 
     if not np.isscalar(r):

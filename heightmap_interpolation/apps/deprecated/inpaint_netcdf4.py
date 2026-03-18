@@ -19,14 +19,16 @@
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
 import argparse
+from timeit import default_timer as timer
+
 import matplotlib.pyplot as plt
 import numpy as np
-from heightmap_interpolation.misc.conditional_print import ConditionalPrint
-import cvxpy as cp
-from timeit import default_timer as timer
+
 from heightmap_interpolation.apps.deprecated.common import load_data, write_results
-from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import create_fd_pde_inpainter
-import scipy
+from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import (
+    create_fd_pde_inpainter,
+)
+from heightmap_interpolation.misc.conditional_print import ConditionalPrint
 
 # def total_variation(arr):
 #     dx = cp.vec(arr[1:, :-1] - arr[:-1, :-1])
@@ -46,10 +48,14 @@ def inpaint(param):
 
     # Compute the percentage of missing data to interpolate w.r.t. the full image
     if param.verbose:
-        total_pixels = elevation.shape[0]*elevation.shape[1]
+        total_pixels = elevation.shape[0] * elevation.shape[1]
         num_pixels_to_inpaint = np.count_nonzero(mask_int)
-        inpaint_percent = (num_pixels_to_inpaint/total_pixels)*100
-        condp.print("Pixels to inpaint represent a {:.2f}% of the image ({:d}/{:d})".format(inpaint_percent, num_pixels_to_inpaint, total_pixels))
+        inpaint_percent = (num_pixels_to_inpaint / total_pixels) * 100
+        condp.print(
+            "Pixels to inpaint represent a {:.2f}% of the image ({:d}/{:d})".format(
+                inpaint_percent, num_pixels_to_inpaint, total_pixels
+            )
+        )
 
     # # TV interpolant
     # condp.print("- Defining the inpainting problem")
@@ -132,7 +138,7 @@ def inpaint(param):
         "print_progress": param.verbose,
         "init_with": param.init_with,
         "convolver": param.convolver,
-        "debug_dir": param.debug_dir
+        "debug_dir": param.debug_dir,
     }
 
     # Create the inpainter
@@ -157,8 +163,8 @@ def inpaint(param):
         condp.print("- Showing results")
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 15))
         images = [elevation, elevation_inpainted]
-        titles = ['Original', 'Inpainted']
-        for (ax, image, title) in zip(axes, images, titles):
+        titles = ["Original", "Inpainted"]
+        for ax, image, title in zip(axes, images, titles):
             ax.imshow(image)
             ax.set_title(title)
             ax.set_axis_off()
@@ -169,36 +175,105 @@ def inpaint(param):
 def parse_args(args=None):
     # Parameters
     parser = argparse.ArgumentParser(
-        description="Interpolate terrain data in a SeaDataNet_1.0 CF1.6-compliant netCDF4 file via inpainting")
-    parser.add_argument("input_file", action="store", type=str,
-                        help="Input NetCDF file")
-    parser.add_argument("-o", "--output_file", action="store", type=str, dest="output_file",
-                        help="Output NetCDF file with interpolated values for cells in which the interpolation_flag was not false, if not specified the input file is modified")
-    parser.add_argument("--areas", action="store", type=str, default="",
-                        help="KML file containing the areas that will be interpolated.")
-    parser.add_argument("--elevation_var", action="store", type=str, default="elevation",
-                        help="Name of the variable storing the elevation grid in the input file.")
-    parser.add_argument("--interpolation_flag_var", action="store", type=str, default="interpolation_flag",
-                        help="Name of the variable storing the per-cell interpolation flag in the input file")
-    parser.add_argument("-interpolate_missing_values", action="store_true", default=False,
-                        help="Missing value flag, activate it to interpolate missing values (NaNs in the --elevation_var variable) instead using the --interpolation_var")
-    parser.add_argument("--method", action="store", type=str, default="sobolev",
-                        help="Name of the inpainting method to use. Available: sobolev, tv, ccst, amle")
-    parser.add_argument("-v", "--verbose", action="store_true", dest="verbose", default=False,
-                        help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line")
-    parser.add_argument("-s", "--show", action="store_true", dest="show", default=False,
-                        help="Show interpolation problem and results on screen")
-    parser.add_argument("--mgs_levels", action="store", dest="mgs_levels", default=1, type=int,
-                        help="If larger than 1, the PDE will be solved using a Multigrid Solver with the number of levels specified in this parameter")
-    parser.add_argument("--init_with", action="store", dest="init_with", default="zeros", type=str,
-                        help="Indicates how to initialize the unknown values before inpainting. If using a Multi-Grid Solver, the initialization will only happen at the deepest level of the pyramid. Available options: zeros (fill with zeros), linear (linear interpolation), sobolev (use the sobolev inpainter)")
-    parser.add_argument("--convolver", action="store", dest="convolver", default="opencv", type=str,
-                        help="Convolution implementation to use. Available: 'scipy-signal', 'scipy-ndimage', 'opencv', 'masked', 'masked-parallel'")
-    parser.add_argument("--debug_dir", action="store", dest="debug_dir", default="", type=str,
-                        help="If set, debugging information will be stored in this directory (useful to visualize the inpainting progress)")
+        description="Interpolate terrain data in a SeaDataNet_1.0 CF1.6-compliant netCDF4 file via inpainting"
+    )
+    parser.add_argument(
+        "input_file", action="store", type=str, help="Input NetCDF file"
+    )
+    parser.add_argument(
+        "-o",
+        "--output_file",
+        action="store",
+        type=str,
+        dest="output_file",
+        help="Output NetCDF file with interpolated values for cells in which the interpolation_flag was not false, if not specified the input file is modified",
+    )
+    parser.add_argument(
+        "--areas",
+        action="store",
+        type=str,
+        default="",
+        help="KML file containing the areas that will be interpolated.",
+    )
+    parser.add_argument(
+        "--elevation_var",
+        action="store",
+        type=str,
+        default="elevation",
+        help="Name of the variable storing the elevation grid in the input file.",
+    )
+    parser.add_argument(
+        "--interpolation_flag_var",
+        action="store",
+        type=str,
+        default="interpolation_flag",
+        help="Name of the variable storing the per-cell interpolation flag in the input file",
+    )
+    parser.add_argument(
+        "-interpolate_missing_values",
+        action="store_true",
+        default=False,
+        help="Missing value flag, activate it to interpolate missing values (NaNs in the --elevation_var variable) instead using the --interpolation_var",
+    )
+    parser.add_argument(
+        "--method",
+        action="store",
+        type=str,
+        default="sobolev",
+        help="Name of the inpainting method to use. Available: sobolev, tv, ccst, amle",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        default=False,
+        help="Verbosity flag, activate it to have feedback of the current steps of the process in the command line",
+    )
+    parser.add_argument(
+        "-s",
+        "--show",
+        action="store_true",
+        dest="show",
+        default=False,
+        help="Show interpolation problem and results on screen",
+    )
+    parser.add_argument(
+        "--mgs_levels",
+        action="store",
+        dest="mgs_levels",
+        default=1,
+        type=int,
+        help="If larger than 1, the PDE will be solved using a Multigrid Solver with the number of levels specified in this parameter",
+    )
+    parser.add_argument(
+        "--init_with",
+        action="store",
+        dest="init_with",
+        default="zeros",
+        type=str,
+        help="Indicates how to initialize the unknown values before inpainting. If using a Multi-Grid Solver, the initialization will only happen at the deepest level of the pyramid. Available options: zeros (fill with zeros), linear (linear interpolation), sobolev (use the sobolev inpainter)",
+    )
+    parser.add_argument(
+        "--convolver",
+        action="store",
+        dest="convolver",
+        default="opencv",
+        type=str,
+        help="Convolution implementation to use. Available: 'scipy-signal', 'scipy-ndimage', 'opencv', 'masked', 'masked-parallel'",
+    )
+    parser.add_argument(
+        "--debug_dir",
+        action="store",
+        dest="debug_dir",
+        default="",
+        type=str,
+        help="If set, debugging information will be stored in this directory (useful to visualize the inpainting progress)",
+    )
     param = parser.parse_args(args)
 
     return param
+
 
 # Main function
 if __name__ == "__main__":

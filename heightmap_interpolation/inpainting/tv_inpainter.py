@@ -1,7 +1,7 @@
-from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
-import heightmap_interpolation.inpainting.differential as diff
 import numpy as np
-import matplotlib.pyplot as plt
+
+import heightmap_interpolation.inpainting.differential as diff
+from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
 
 
 class TVInpainter(FDPDEInpainter):
@@ -21,10 +21,12 @@ class TVInpainter(FDPDEInpainter):
         # DevNotes:
         #   - We are not using the np.gradient() function because it uses 2nd order approximation (central differences) to compute the gradients, and this leads to "blocky" solutions for the PDE... Need to check why!
         #   - The first gradient uses forward differences, and the gradients inside "divergence" use backward differences. In this way, the resulting divergence is "aligned" to f
-        return self.diff_ops.divergence(self.neps(self.diff_ops.gradient(f, mask)), mask)
+        return self.diff_ops.divergence(
+            self.neps(self.diff_ops.gradient(f, mask)), mask
+        )
 
     def amplitude(self, g):
-        return np.sqrt(g[0]*g[0] + g[1]*g[1] + self.epsilon*self.epsilon)
+        return np.sqrt(g[0] * g[0] + g[1] * g[1] + self.epsilon * self.epsilon)
 
     def neps(self, g):
         ampl = self.amplitude(g)

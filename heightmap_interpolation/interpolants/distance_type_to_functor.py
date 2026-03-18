@@ -16,10 +16,11 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-import numpy as np
-import haversine.haversine
 import geopy.distance
+import haversine.haversine
+import numpy as np
 import scipy
+
 
 # Get the distance function from its type
 def distance_type_to_functor(dist_type: str):
@@ -30,39 +31,57 @@ def distance_type_to_functor(dist_type: str):
     elif dist_type == "vincenty":
         dist_fun = geopy.distance.vincenty
     else:
-        raise ValueError("distance-type should be either 'euclidean', 'haversine' or 'vincenty'")
+        raise ValueError(
+            "distance-type should be either 'euclidean', 'haversine' or 'vincenty'"
+        )
     return dist_fun
+
 
 def distance_type_to_cdist_functor(dist_type: str):
     if dist_type == "euclidean":
+
         def my_cdist(XA, XB):
             return scipy.spatial.distance.cdist(XA, XB)
+
         return my_cdist
     elif dist_type == "haversine":
+
         def my_cdist(XA, XB):
             return scipy.spatial.distance.cdist(XA, XB, haversine)
+
         return my_cdist
     elif dist_type == "vincenty":
+
         def my_cdist(XA, XB):
             return scipy.spatial.distance.cdist(XA, XB, geopy.distance.vincenty)
+
         return my_cdist
     else:
-        raise ValueError("distance-type should be either 'euclidean', 'haversine' or 'vincenty'")
+        raise ValueError(
+            "distance-type should be either 'euclidean', 'haversine' or 'vincenty'"
+        )
 
 
 def distance_type_to_pdist_functor(dist_type: str):
     if dist_type == "euclidean":
+
         def my_cdist(X):
             return scipy.spatial.distance.pdist(X)
+
         return my_cdist
     elif dist_type == "haversine":
+
         def my_cdist(X):
             return scipy.spatial.distance.pdist(X, haversine)
+
         return my_cdist
     elif dist_type == "vincenty":
+
         def my_cdist(X):
             return scipy.spatial.distance.pdist(X, geopy.distance.vincenty)
+
         return my_cdist
     else:
-        raise ValueError("distance-type should be either 'euclidean', 'haversine' or 'vincenty'")
-
+        raise ValueError(
+            "distance-type should be either 'euclidean', 'haversine' or 'vincenty'"
+        )

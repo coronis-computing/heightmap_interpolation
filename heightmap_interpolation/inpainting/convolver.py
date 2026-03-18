@@ -1,8 +1,14 @@
 from abc import ABC, abstractmethod
+
+import cv2
 import numpy as np
 import scipy
-import cv2
-from heightmap_interpolation.inpainting.convolve_at_mask import convolve_at_mask, nb_convolve_at_mask, nb_convolve_at_mask_parallel, nb_convolve_at_mask_guvec
+
+from heightmap_interpolation.inpainting.convolve_at_mask import (
+    nb_convolve_at_mask,
+    nb_convolve_at_mask_guvec,
+    nb_convolve_at_mask_parallel,
+)
 
 
 class Convolver(object):
@@ -41,17 +47,21 @@ class ConvolverBase(ABC):
 class NumpyConvolver(ConvolverBase):
     # WARNING: this does not work!
     def __call__(self, image, kernel, mask):
-        return np.real(np.fft.ifft2(np.fft.fft2(image) * np.fft.fft2(kernel, s=image.shape)))
+        return np.real(
+            np.fft.ifft2(np.fft.fft2(image) * np.fft.fft2(kernel, s=image.shape))
+        )
 
 
 class ScipySignalConvolver(ConvolverBase):
     def __call__(self, image, kernel, mask):
-        return scipy.signal.convolve(image, kernel, mode='same') # Using this instead of convolve2d because it automatically decides whether to use a 'direct' or an 'fft' convolution
+        return scipy.signal.convolve(
+            image, kernel, mode="same"
+        )  # Using this instead of convolve2d because it automatically decides whether to use a 'direct' or an 'fft' convolution
 
 
 class ScipyNDImageConvolver(ConvolverBase):
     def __call__(self, image, kernel, mask):
-        return scipy.ndimage.convolve(image, kernel, mode='reflect')
+        return scipy.ndimage.convolve(image, kernel, mode="reflect")
 
 
 class OpenCVConvolver(ConvolverBase):

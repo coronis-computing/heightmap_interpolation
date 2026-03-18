@@ -1,72 +1,84 @@
 #!/usr/bin/env python3
 
-import os
-import sys
 import copy
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import subprocess
 import json
-from heightmap_interpolation.apps.deprecated.common import load_data_impl, write_results_impl
-from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import create_fd_pde_inpainter
-from timeit import default_timer as timer
-import time
-import psutil
 import multiprocessing as mp
-import queue
+import os
+import subprocess
+import sys
+import time
+from timeit import default_timer as timer
+
+import matplotlib.pyplot as plt
+import numpy as np
+import psutil
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from heightmap_interpolation.apps.deprecated.common import (
+    load_data_impl,
+    write_results_impl,
+)
+from heightmap_interpolation.inpainting.fd_pde_inpainter_factory import (
+    create_fd_pde_inpainter,
+)
+
 # import billiard as mp
+
 
 def create_default_config():
     config = {
         # Configuration of the reporter
-        "work_dir": "./report", # The working directory, here results as well as the report doc sources will be stored
-        "title": "Execution report", # The title of the report
-        "further_intro_text": "", # Use this option to introduce further custom text in the intro section
-        "re-write": False, # If set, all the text sections will be re-written
+        "work_dir": "./report",  # The working directory, here results as well as the report doc sources will be stored
+        "title": "Execution report",  # The title of the report
+        "further_intro_text": "",  # Use this option to introduce further custom text in the intro section
+        "re-write": False,  # If set, all the text sections will be re-written
         "re-execute": False,  # If set, all the tests will be re-executed and tests sections will be re-written
-        "output_file": "./report.pdf", # The final report file
-        "datasets": [ # A list of datasets. A report can contain different datasets
+        "output_file": "./report.pdf",  # The final report file
+        "datasets": [  # A list of datasets. A report can contain different datasets
             {
-                "name": "Example dataset", # A name/ID/alias for the dataset
-                "netcdf_file": "", # The actual NetCDF file containing the data
-                "elevation_var": "elevation", # The name of the variable inside the netcdf file to be considered as the elevation/bathymetry
+                "name": "Example dataset",  # A name/ID/alias for the dataset
+                "netcdf_file": "",  # The actual NetCDF file containing the data
+                "elevation_var": "elevation",  # The name of the variable inside the netcdf file to be considered as the elevation/bathymetry
                 "interpolate_missing_values": True,
-                "tests": [ # A list of tests. Each dataset can be used in multiple tests
+                "tests": [  # A list of tests. Each dataset can be used in multiple tests
                     {
-                        "name": "", # # A name/ID/alias for the test, if needed
+                        "name": "",  # # A name/ID/alias for the test, if needed
                         "inpainting_method": "sobolev",
-                        "inpainting_config": # The configuration for the inpainter, in the same format as expected by fd_pde_inpainter.
-                            {
-                                "update_step_size": 0.01,
-                                "rel_change_tolerance": 1e-8,
-                                "max_iters": 1e8,
-                                "relaxation": 0,
-                                "mgs_levels": 1,
-                                "print_progress": True,
-                                "print_progress_iters": 1000,
-                                "init_with": "zeros",
-                                "convolver": "opencv"
-                            }
+                        "inpainting_config":  # The configuration for the inpainter, in the same format as expected by fd_pde_inpainter.
+                        {
+                            "update_step_size": 0.01,
+                            "rel_change_tolerance": 1e-8,
+                            "max_iters": 1e8,
+                            "relaxation": 0,
+                            "mgs_levels": 1,
+                            "print_progress": True,
+                            "print_progress_iters": 1000,
+                            "init_with": "zeros",
+                            "convolver": "opencv",
+                        },
                     }
-                ]
+                ],
             }
-        ]
+        ],
     }
 
     return config
 
 
-def inpainting_thread(inpainter, elevation, inpainting_mask, inpainted_elevation_mp, queue):
+def inpainting_thread(
+    inpainter, elevation, inpainting_mask, inpainted_elevation_mp, queue
+):
     # Inpaint (time the execution time)
     ts = timer()
     inpainted_elevation = inpainter.inpaint(elevation, inpainting_mask)
     te = timer()
-    duration = te-ts
+    duration = te - ts
 
     # Convert the results to the shared mp.Array
-    inpainted_elevation_mp_np = np.reshape(np.frombuffer(inpainted_elevation_mp.get_obj(), dtype=elevation.dtype),
-                                           elevation.shape)
+    inpainted_elevation_mp_np = np.reshape(
+        np.frombuffer(inpainted_elevation_mp.get_obj(), dtype=elevation.dtype),
+        elevation.shape,
+    )
     np.copyto(inpainted_elevation_mp_np, inpainted_elevation)
 
     # Queue other return data (in this case, the duration of the execution)
@@ -74,7 +86,8 @@ def inpainting_thread(inpainter, elevation, inpainting_mask, inpainted_elevation
     # queue.put([True])
     # queue.cancel_join_thread()
 
-class InpaintingReporter():
+
+class InpaintingReporter:
     # Executes a series of tests described in the config file, and creates a document in PDF with the results
     # Each section is written in a separate markdown file, and joined at the end in a single file
 
@@ -85,7 +98,7 @@ class InpaintingReporter():
         self.results_dir = os.path.join(self.config["work_dir"], "results")
         self.docs_dir = os.path.join(self.config["work_dir"], "docs")
         self.report_file_md = os.path.join(self.config["work_dir"], "report.md")
-        self.section_files = [] # Will be populated after writing a given section
+        self.section_files = []  # Will be populated after writing a given section
         # Data/info of the current dataset
         self.ds_config = None
         self.ds_counter = 0
@@ -112,7 +125,7 @@ class InpaintingReporter():
         self.res_once_memory_mean = 0
         self.res_memory_max = 0
         self.res_cpu_time = 0
-        self.update_period = 0.1 # Account every self.update_period seconds
+        self.update_period = 0.1  # Account every self.update_period seconds
 
     def init_folders(self):
         os.makedirs(self.results_dir, exist_ok=True)
@@ -147,14 +160,19 @@ class InpaintingReporter():
 
         # Compute some CPU/Memory stats
         self.res_num_queries += 1
-        cpu_percent = process.cpu_percent()  # Make sure to do this before the call to poll()
+        cpu_percent = (
+            process.cpu_percent()
+        )  # Make sure to do this before the call to poll()
         if self.res_once_cpu_mean:
             if cpu_percent > sys.float_info.epsilon:
                 self.res_cpu_percent_mean = cpu_percent
                 self.res_once_cpu_mean = False
         else:
             if cpu_percent > sys.float_info.epsilon:
-                self.res_cpu_percent_mean = self.res_cpu_percent_mean + (cpu_percent - self.res_cpu_percent_mean) / self.res_num_queries
+                self.res_cpu_percent_mean = (
+                    self.res_cpu_percent_mean
+                    + (cpu_percent - self.res_cpu_percent_mean) / self.res_num_queries
+                )
 
         if self.res_cpu_percent_max < cpu_percent:
             self.res_cpu_percent_max = cpu_percent
@@ -169,7 +187,10 @@ class InpaintingReporter():
                 self.res_once_memory_mean = False
         else:
             if memory.rss > sys.float_info.epsilon:
-                self.res_memory_mean = self.res_memory_mean + (float(memory.rss) - self.res_memory_mean) / self.res_num_queries
+                self.res_memory_mean = (
+                    self.res_memory_mean
+                    + (float(memory.rss) - self.res_memory_mean) / self.res_num_queries
+                )
 
         if self.res_memory_max < memory.rss:
             self.res_memory_max = float(memory.rss)
@@ -195,13 +216,15 @@ class InpaintingReporter():
         #     return
 
         # Open the file
-        f = open(doc_path, 'w')
+        f = open(doc_path, "w")
 
         # Writes the main title
         f.write("# " + self.config["title"] + "\n\n")
 
         # Writes the intro section
-        f.write("This report presents the execution results using the inpainting methods of the `heightmap_interpolation` toolbox.\n\n")
+        f.write(
+            "This report presents the execution results using the inpainting methods of the `heightmap_interpolation` toolbox.\n\n"
+        )
 
         # Close the file
         f.close()
@@ -221,17 +244,23 @@ class InpaintingReporter():
         #     return
 
         # Open the file
-        f = open(doc_path, 'w')
+        f = open(doc_path, "w")
 
         # Writes the main title
         f.write("# Resources\n\n")
 
         # Writes the intro section
-        f.write("All the tests in this report were executed on a computer with the following resources:\n\n")
+        f.write(
+            "All the tests in this report were executed on a computer with the following resources:\n\n"
+        )
 
-        f.write("| **CPU cores** | **RAM memory (Gb)**\n" +
-                "| :---: | :---: |\n" +
-                "| {:d} | {:.2f} |\n\n".format(mp.cpu_count(), psutil.virtual_memory().total/(1024**3)))
+        f.write(
+            "| **CPU cores** | **RAM memory (Gb)**\n"
+            + "| :---: | :---: |\n"
+            + "| {:d} | {:.2f} |\n\n".format(
+                mp.cpu_count(), psutil.virtual_memory().total / (1024**3)
+            )
+        )
 
         # Close the file
         f.close()
@@ -241,9 +270,11 @@ class InpaintingReporter():
 
     def load_dataset(self, ds_config):
         # Read the file
-        elevation, mask_int, lats_mat, lons_mat, mask_ref = load_data_impl(ds_config["netcdf_file"],
-                                                                           ds_config["elevation_var"],
-                                                                           ds_config["interpolate_missing_values"])
+        elevation, mask_int, lats_mat, lons_mat, mask_ref = load_data_impl(
+            ds_config["netcdf_file"],
+            ds_config["elevation_var"],
+            ds_config["interpolate_missing_values"],
+        )
 
         # Store the elevation and inpainting mask (will be used later in all the tests to be performed on this dataset)
         self.ds_inpainting_mask = ~mask_int
@@ -254,20 +285,29 @@ class InpaintingReporter():
         self.ds_max_elevation = np.amax(self.ds_elevation[self.ds_inpainting_mask])
 
     def set_dataset_paths(self, ds_config):
-        self.section_dir = os.path.join(self.docs_dir, "dataset_{:d}".format(self.ds_counter), "data_analysis")
+        self.section_dir = os.path.join(
+            self.docs_dir, "dataset_{:d}".format(self.ds_counter), "data_analysis"
+        )
         self.doc_path = os.path.join(self.section_dir, "intro.md")
         os.makedirs(self.section_dir, exist_ok=True)
-        self.ds_config = ds_config # TODO: do we need this? When using it in other functions, we should decide whether we use it as a function parameter or we rely on the attributes of the class...
+        self.ds_config = ds_config  # TODO: do we need this? When using it in other functions, we should decide whether we use it as a function parameter or we rely on the attributes of the class...
 
     def set_tests_paths(self, tst_config):
-        self.test_subdir = os.path.join("dataset_{:d}".format(self.ds_counter), "test_{:d}".format(self.test_counter))
+        self.test_subdir = os.path.join(
+            "dataset_{:d}".format(self.ds_counter),
+            "test_{:d}".format(self.test_counter),
+        )
         self.section_dir = os.path.join(self.docs_dir, self.test_subdir)
         self.current_results_dir = os.path.join(self.results_dir, self.test_subdir)
-        self.doc_path = os.path.join(self.section_dir, "test_{:d}.md".format(self.test_counter))
+        self.doc_path = os.path.join(
+            self.section_dir, "test_{:d}.md".format(self.test_counter)
+        )
         os.makedirs(self.section_dir, exist_ok=True)
         os.makedirs(self.current_results_dir, exist_ok=True)
         if tst_config["name"]:
-            self.test_base_name = "{:s}_test_{:d}".format(tst_config["name"], self.test_counter)
+            self.test_base_name = "{:s}_test_{:d}".format(
+                tst_config["name"], self.test_counter
+            )
         else:
             self.test_base_name = "test_{:d}".format(self.test_counter)
 
@@ -276,9 +316,14 @@ class InpaintingReporter():
         self.ds_config = ds_config
 
         # Check if this section was already written
-        self.section_dir = os.path.join(self.docs_dir, "dataset_{:d}".format(self.ds_counter), "data_analysis")
+        self.section_dir = os.path.join(
+            self.docs_dir, "dataset_{:d}".format(self.ds_counter), "data_analysis"
+        )
         self.doc_path = os.path.join(self.section_dir, "intro.md")
-        if self.data_analysis_section_was_already_written(ds_config) and not self.config["re-write"]:
+        if (
+            self.data_analysis_section_was_already_written(ds_config)
+            and not self.config["re-write"]
+        ):
             print("Dataset analysis section was already written, skipping...")
             # Append to the list of sections
             self.section_files.append(self.doc_path)
@@ -286,7 +331,7 @@ class InpaintingReporter():
         # Create dirs if needed
         os.makedirs(self.section_dir, exist_ok=True)
 
-        f = open(self.doc_path, 'w')
+        f = open(self.doc_path, "w")
         f.write("# Dataset {:d}".format(self.ds_counter))
         if ds_config["name"]:
             f.write(": {:s}\n\n".format(ds_config["name"]))
@@ -320,26 +365,48 @@ class InpaintingReporter():
         if ds_config["name"]:
             fig_caption += ": {:s}".format(ds_config["name"])
 
-        f.write("The input dataset {:s} can be seen in figure \\ref{{{:s}}}.\n\n".format(ds_config["name"],
-                                                                                         tex_figure_label))
-        f.write("![{:s}\label{{{:s}}}]({:s})\n\n".format(fig_caption, tex_figure_label, input_data_image_path))
+        f.write(
+            "The input dataset {:s} can be seen in figure \\ref{{{:s}}}.\n\n".format(
+                ds_config["name"], tex_figure_label
+            )
+        )
+        f.write(
+            "![{:s}\\label{{{:s}}}]({:s})\n\n".format(
+                fig_caption, tex_figure_label, input_data_image_path
+            )
+        )
 
         f.write("It has the following properties:\n\n")
 
-        storage_size = os.path.getsize(input_data_image_path) / (1024*1024)
+        storage_size = os.path.getsize(input_data_image_path) / (1024 * 1024)
         total_pixels = self.ds_elevation.shape[0] * self.ds_elevation.shape[1]
         num_pixels_to_inpaint = np.count_nonzero(~self.ds_inpainting_mask)
         inpaint_percent = (num_pixels_to_inpaint / total_pixels) * 100
 
-        f.write("| **Width** | **Height** | **Size (MBytes)** | **Min. elevation** | **Max. elevation** |\n"+
-                "| :---: | :---: | :---: | :---: | :---: | \n" +
-                "| {:d} | {:d} | {:.2f} | {:.2f} | {:.2f} |\n\n".format(self.ds_elevation.shape[1], self.ds_elevation.shape[0], storage_size, self.ds_min_elevation, self.ds_max_elevation))
+        f.write(
+            "| **Width** | **Height** | **Size (MBytes)** | **Min. elevation** | **Max. elevation** |\n"
+            + "| :---: | :---: | :---: | :---: | :---: | \n"
+            + "| {:d} | {:d} | {:.2f} | {:.2f} | {:.2f} |\n\n".format(
+                self.ds_elevation.shape[1],
+                self.ds_elevation.shape[0],
+                storage_size,
+                self.ds_min_elevation,
+                self.ds_max_elevation,
+            )
+        )
 
         f.write("And it presents the following inpainting problem:\n\n")
 
-        f.write("| **Num. cells** | **Unknown cells** | **Known cells** | **\% to inpaint** |\n"+
-                "| :---: | :---: | :---: | :---: |\n" +
-                "| {:d} | {:d} | {:d} | {:.2f} |\n\n".format(total_pixels, total_pixels-num_pixels_to_inpaint, num_pixels_to_inpaint, inpaint_percent))
+        f.write(
+            "| **Num. cells** | **Unknown cells** | **Known cells** | **\\% to inpaint** |\n"
+            + "| :---: | :---: | :---: | :---: |\n"
+            + "| {:d} | {:d} | {:d} | {:.2f} |\n\n".format(
+                total_pixels,
+                total_pixels - num_pixels_to_inpaint,
+                num_pixels_to_inpaint,
+                inpaint_percent,
+            )
+        )
 
         f.close()
 
@@ -348,7 +415,7 @@ class InpaintingReporter():
 
         ds_config_copy = copy.deepcopy(ds_config)
         ds_config_copy.pop("tests")
-        with open(config, 'w') as fp:
+        with open(config, "w") as fp:
             json.dump(ds_config_copy, fp, indent=4)
 
         # Append to the list of sections
@@ -380,9 +447,15 @@ class InpaintingReporter():
         # Check if we already executed the test
 
         # Create a shared variable for storing the inpainting results, which will be computed on a different process
-        inpainted_elevation = np.zeros(self.ds_elevation.shape, dtype=self.ds_elevation.dtype)
-        inpainted_elevation_ctype = np.ctypeslib.as_ctypes_type(inpainted_elevation.dtype)  # Same as elevation
-        inpainted_elevation_mp = mp.Array(inpainted_elevation_ctype, inpainted_elevation.size)
+        inpainted_elevation = np.zeros(
+            self.ds_elevation.shape, dtype=self.ds_elevation.dtype
+        )
+        inpainted_elevation_ctype = np.ctypeslib.as_ctypes_type(
+            inpainted_elevation.dtype
+        )  # Same as elevation
+        inpainted_elevation_mp = mp.Array(
+            inpainted_elevation_ctype, inpainted_elevation.size
+        )
 
         # Execute the inpainting (and time it)
         # ts = timer()
@@ -390,7 +463,16 @@ class InpaintingReporter():
         # Call inpainting in a thread (to be able to account resources used during execution)
         results_queue = mp.Queue()
         # results_queue = queue.Queue()
-        self.call_function_and_account_resources(inpainting_thread, (self.inpainter, self.ds_elevation, self.ds_inpainting_mask, inpainted_elevation_mp, results_queue))
+        self.call_function_and_account_resources(
+            inpainting_thread,
+            (
+                self.inpainter,
+                self.ds_elevation,
+                self.ds_inpainting_mask,
+                inpainted_elevation_mp,
+                results_queue,
+            ),
+        )
         # te = timer()
         # duration = te-ts
 
@@ -401,32 +483,47 @@ class InpaintingReporter():
         ret_vals = results_queue.get()
         self.run_duration = ret_vals[0]
         self.inpainted_elevation = np.reshape(
-            np.frombuffer(inpainted_elevation_mp.get_obj(), dtype=inpainted_elevation.dtype), inpainted_elevation.shape)
+            np.frombuffer(
+                inpainted_elevation_mp.get_obj(), dtype=inpainted_elevation.dtype
+            ),
+            inpainted_elevation.shape,
+        )
 
         # Save the results
         if tst_config["name"]:
-            test_base_name = "{:s}_test_{:d}".format(tst_config["name"], self.test_counter)
+            test_base_name = "{:s}_test_{:d}".format(
+                tst_config["name"], self.test_counter
+            )
         else:
             test_base_name = "test_{:d}".format(self.test_counter)
-        inpainting_results_netcdf = os.path.join(self.current_results_dir, test_base_name + ".nc")
-        write_results_impl(inpainting_results_netcdf,
-                           self.ds_config["netcdf_file"],
-                           inpainted_elevation, self.ds_inpainting_mask,
-                           elevation_var=self.ds_config["elevation_var"],
-                           interpolate_missing_values=self.ds_config["interpolate_missing_values"])
+        inpainting_results_netcdf = os.path.join(
+            self.current_results_dir, test_base_name + ".nc"
+        )
+        write_results_impl(
+            inpainting_results_netcdf,
+            self.ds_config["netcdf_file"],
+            inpainted_elevation,
+            self.ds_inpainting_mask,
+            elevation_var=self.ds_config["elevation_var"],
+            interpolate_missing_values=self.ds_config["interpolate_missing_values"],
+        )
 
         # Save the configuration also, so that we have a reference, and a mark that the test was executed
-        test_config = os.path.join(self.current_results_dir, self.test_base_name + "_config.json")
+        test_config = os.path.join(
+            self.current_results_dir, self.test_base_name + "_config.json"
+        )
 
         # Update the config to store with the actual (full) inpainter configuration
         inpainter_config = self.inpainter.get_config()
         tst_config["actual_inpainter_config"] = inpainter_config
-        with open(test_config, 'w') as fp:
+        with open(test_config, "w") as fp:
             json.dump(tst_config, fp, indent=4)
 
     def test_was_already_executed(self, tst_config):
         # Create the inpainter
-        self.inpainter = create_fd_pde_inpainter(tst_config["inpainting_method"], tst_config["inpainting_config"])
+        self.inpainter = create_fd_pde_inpainter(
+            tst_config["inpainting_method"], tst_config["inpainting_config"]
+        )
 
         if self.config["re-execute"]:
             return False
@@ -447,8 +544,9 @@ class InpaintingReporter():
         # Compare this config with the one stored from a previous execution
         # Save the configuration also, so that we have a reference, and a mark that the test was executed
 
-
-        prev_config_file = os.path.join(self.current_results_dir, self.test_base_name + "_config.json")
+        prev_config_file = os.path.join(
+            self.current_results_dir, self.test_base_name + "_config.json"
+        )
         if not os.path.exists(prev_config_file):
             return False
         f = open(prev_config_file)
@@ -481,14 +579,18 @@ class InpaintingReporter():
         #     test_base_name = "test_{:d}".format(self.test_counter)
 
         # Write the section
-        f = open(self.doc_path, 'w')
+        f = open(self.doc_path, "w")
         f.write("## Test {:d}".format(self.test_counter))
         if tst_config["name"]:
             f.write(": {:s}\n\n".format(tst_config["name"]))
         else:
             f.write("\n\n")
 
-        f.write("Executed the *{:s}* inpainting method with the following parameters (defaults values also listed):\n\n".format(tst_config["inpainting_method"]))
+        f.write(
+            "Executed the *{:s}* inpainting method with the following parameters (defaults values also listed):\n\n".format(
+                tst_config["inpainting_method"]
+            )
+        )
 
         config = self.inpainter.get_config()
         for key, value in config.items():
@@ -505,14 +607,26 @@ class InpaintingReporter():
         # Save it
         images_dir = os.path.join(self.section_dir, "images")
         os.makedirs(images_dir, exist_ok=True)
-        results_image_path = os.path.join(images_dir, self.test_base_name + "_result.png")
+        results_image_path = os.path.join(
+            images_dir, self.test_base_name + "_result.png"
+        )
         plt.savefig(results_image_path, bbox_inches="tight")
 
         # Render it on the doc (as a Markdown link)
         tex_figure_label = "fig:inpainting_test_{:d}".format(self.test_counter)
-        fig_caption = "Inpainting results of test {:d} {:s}".format(self.test_counter, tst_config["name"])
-        f.write("The inpainting results can be seen in figure \\ref{{{:s}}}.\n\n".format(tex_figure_label))
-        f.write("![{:s}\label{{{:s}}}]({:s})\n\n".format(fig_caption, tex_figure_label, results_image_path))
+        fig_caption = "Inpainting results of test {:d} {:s}".format(
+            self.test_counter, tst_config["name"]
+        )
+        f.write(
+            "The inpainting results can be seen in figure \\ref{{{:s}}}.\n\n".format(
+                tex_figure_label
+            )
+        )
+        f.write(
+            "![{:s}\\label{{{:s}}}]({:s})\n\n".format(
+                fig_caption, tex_figure_label, results_image_path
+            )
+        )
 
         # Write further info on the results
         # f.write("The inpainting process took {:.2f} seconds. ".format(duration))
@@ -523,11 +637,21 @@ class InpaintingReporter():
         overshooted_min = inpainted_elevation_min < self.ds_min_elevation
         overshooted_max = inpainted_elevation_max > self.ds_max_elevation
         if overshooted_min or overshooted_max:
-            f.write("**WARNING**: the inpainting results present some **overshooting** with respect to the original known input values:\n\n")
+            f.write(
+                "**WARNING**: the inpainting results present some **overshooting** with respect to the original known input values:\n\n"
+            )
         if overshooted_min:
-            f.write("* Original minimum elevation was {:.2f}, but in the inpainted result is {:.2f}\n".format(self.ds_min_elevation, inpainted_elevation_min))
+            f.write(
+                "* Original minimum elevation was {:.2f}, but in the inpainted result is {:.2f}\n".format(
+                    self.ds_min_elevation, inpainted_elevation_min
+                )
+            )
         if overshooted_max:
-            f.write("* Original maximum elevation was {:.2f}, but in the inpainted result is {:.2f}\n".format(self.ds_max_elevation, inpainted_elevation_max))
+            f.write(
+                "* Original maximum elevation was {:.2f}, but in the inpainted result is {:.2f}\n".format(
+                    self.ds_max_elevation, inpainted_elevation_max
+                )
+            )
 
         f.write("\n\n")
 
@@ -542,19 +666,27 @@ class InpaintingReporter():
         if self.run_duration > 60:
             duration = duration / 60
             duration_unit = "hours"
-        f.write("The execution took a total of **{:.2f} {}**, and it required the following resources:\n\n".format(duration, duration_unit))
+        f.write(
+            "The execution took a total of **{:.2f} {}**, and it required the following resources:\n\n".format(
+                duration, duration_unit
+            )
+        )
         f.write(
             "| **Mean CPU %** | **Max. CPU %** | **Total CPU time (s)** | **Mean Memory (MB)** | **Max Memory (MB)** |\n"
             "| :---: | :---: | :---: | :---: | :---: |\n"
-            "| {:.2f} | {:.2f} | {:.2f} | {:.2f} | {:.2f} |\n\n".format(self.res_cpu_percent_mean,
-                                                                        self.res_cpu_percent_max,
-                                                                        self.res_cpu_time,
-                                                                        self.res_memory_mean / (1024*1024),
-                                                                        self.res_memory_max / (1024*1024)))
+            "| {:.2f} | {:.2f} | {:.2f} | {:.2f} | {:.2f} |\n\n".format(
+                self.res_cpu_percent_mean,
+                self.res_cpu_percent_max,
+                self.res_cpu_time,
+                self.res_memory_mean / (1024 * 1024),
+                self.res_memory_max / (1024 * 1024),
+            )
+        )
         f.write(
             "Note that the CPU statistics above are computed accross all used CPUs, so multithreaded "
             "calls may potentially exceed the 100% CPU usage and cause the total CPU time to be larger "
-            "than the actual execution time.\n\n")
+            "than the actual execution time.\n\n"
+        )
 
         # Close the file
         f.close()
@@ -571,7 +703,7 @@ class InpaintingReporter():
         # Intro
         print("- Writing generic intro section")
         self.write_intro_section()
-        
+
         # Resources
         print("- Writing machine resources section")
         self.write_machine_resources_section()
@@ -585,8 +717,15 @@ class InpaintingReporter():
             # Set the paths to the docs
             self.set_dataset_paths(ds_config)
 
-            if self.data_analysis_section_was_already_written(ds_config) and not self.config["re-write"]:
-                print("(Dataset {:d} analysis section was already written, skipping...)".format(self.ds_counter))
+            if (
+                self.data_analysis_section_was_already_written(ds_config)
+                and not self.config["re-write"]
+            ):
+                print(
+                    "(Dataset {:d} analysis section was already written, skipping...)".format(
+                        self.ds_counter
+                    )
+                )
                 # Append to the list of sections
                 self.section_files.append(self.doc_path)
             else:
@@ -599,7 +738,10 @@ class InpaintingReporter():
                 # Set the paths to the test
                 self.set_tests_paths(tst_config)
 
-                if not self.test_was_already_executed(tst_config) and not self.config["re-execute"]:
+                if (
+                    not self.test_was_already_executed(tst_config)
+                    and not self.config["re-execute"]
+                ):
                     # Note that, in this case, both the execution and the document generation are considered to be created IF the test was executed
 
                     # Run the test
@@ -610,7 +752,11 @@ class InpaintingReporter():
                 else:
                     # Append to the list of sections
                     self.section_files.append(self.doc_path)
-                    print("(Test {:d} was already executed, skipping...)".format(self.test_counter))
+                    print(
+                        "(Test {:d} was already executed, skipping...)".format(
+                            self.test_counter
+                        )
+                    )
                 self.test_counter += 1
 
             self.ds_counter += 1
@@ -624,7 +770,7 @@ class InpaintingReporter():
         self.render_report_to_pdf()
 
     def merge_sections(self):
-        with open(self.report_file_md, 'w') as outfile:
+        with open(self.report_file_md, "w") as outfile:
             for fname in self.section_files:
                 with open(fname) as infile:
                     outfile.write(infile.read())
@@ -641,16 +787,30 @@ class InpaintingReporter():
         # print("Rendering report to PDF")
         # ret_code = subprocess.call(args, cwd=config.PANDOC_TEMPLATES_DIR)
 
-        args = ["pandoc", self.report_file_md,
-                "-H", "header.tex",
-                #"-B", "before_body.tex",
-                "--listings",
-                "-N",
-                "-o", self.config["output_file"]]
+        args = [
+            "pandoc",
+            self.report_file_md,
+            "-H",
+            "header.tex",
+            # "-B", "before_body.tex",
+            "--listings",
+            "-N",
+            "-o",
+            self.config["output_file"],
+        ]
 
-        pandoc_templates_dir=os.path.join(os.path.dirname(sys.modules["heightmap_interpolation.reporter.inpaint_netcdf_reporter"].__file__), "templates")
+        pandoc_templates_dir = os.path.join(
+            os.path.dirname(
+                sys.modules[
+                    "heightmap_interpolation.reporter.inpaint_netcdf_reporter"
+                ].__file__
+            ),
+            "templates",
+        )
 
         ret_code = subprocess.call(args, cwd=pandoc_templates_dir)
 
         if ret_code != 0:
-            raise ValueError("Rendering the report to a PDF failed with return code = {:d}", ret_code)
+            raise ValueError(
+                "Rendering the report to a PDF failed with return code = {:d}", ret_code
+            )

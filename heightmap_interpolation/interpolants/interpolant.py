@@ -16,8 +16,9 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-import numpy as np
 from abc import ABC, abstractmethod
+
+import numpy as np
 
 
 class Interpolant(ABC):

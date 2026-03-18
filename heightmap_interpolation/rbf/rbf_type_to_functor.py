@@ -16,12 +16,12 @@
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
 
-from heightmap_interpolation.rbf.linear_rbf import *
 from heightmap_interpolation.rbf.cubic_rbf import *
-from heightmap_interpolation.rbf.quintic_rbf import *
 from heightmap_interpolation.rbf.gaussian_rbf import *
 from heightmap_interpolation.rbf.green_rbf import *
+from heightmap_interpolation.rbf.linear_rbf import *
 from heightmap_interpolation.rbf.multiquadric_rbf import *
+from heightmap_interpolation.rbf.quintic_rbf import *
 from heightmap_interpolation.rbf.regularized_spline_rbf import *
 from heightmap_interpolation.rbf.tension_spline_rbf import *
 from heightmap_interpolation.rbf.thin_plate_spline_rbf import *
@@ -58,7 +58,7 @@ def rbf_type_to_functor(rbf_type: str, e):
         "regularized": fixed_e_regularized_spline_rbf,
         "tension": fixed_e_tension_spline_rbf,
         "thinplate": thin_plate_spline_rbf,
-        "wendland": fixed_e_wendland_csrbf
+        "wendland": fixed_e_wendland_csrbf,
     }
 
     return switcher[rbf_type]

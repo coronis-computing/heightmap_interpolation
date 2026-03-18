@@ -1,7 +1,5 @@
-from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
-from scipy.ndimage.filters import laplace
 import heightmap_interpolation.inpainting.differential as diff
-import cv2
+from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
 
 
 class CCSTInpainter(FDPDEInpainter):
@@ -17,8 +15,10 @@ class CCSTInpainter(FDPDEInpainter):
         super().__init__(**kwargs)
         # --- Gather and check the input parameters ---
         self.tension = kwargs.pop("tension", 0.0)
-        if self.tension < 0. or self.tension > 1.:
-            raise ValueError("tension parameter must be a number between 0 and 1 (included)")
+        if self.tension < 0.0 or self.tension > 1.0:
+            raise ValueError(
+                "tension parameter must be a number between 0 and 1 (included)"
+            )
 
     def step_fun(self, f, mask):
         # Version using scipy, slower than using OpenCV below
@@ -31,7 +31,7 @@ class CCSTInpainter(FDPDEInpainter):
         harmonic = self.convolver(f, diff.laplacian_kernel_2d, mask)
         biharmonic = self.convolver(harmonic, diff.laplacian_kernel_2d, mask)
 
-        return -1*((1-self.tension)*biharmonic - self.tension*harmonic)
+        return -1 * ((1 - self.tension) * biharmonic - self.tension * harmonic)
 
     def get_config(self):
         config = super(CCSTInpainter, self).get_config()
