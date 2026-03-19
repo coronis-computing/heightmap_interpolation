@@ -37,7 +37,7 @@ class AMSInterpolant(Interpolant):
         degree=2,
         solve_depth=-1,
         full_depth=5,
-        base_depth=None,
+        base_depth=-1,
         boundary_type="free",
         iters=8,
         base_v_cycles=4,
@@ -92,12 +92,13 @@ class AMSInterpolant(Interpolant):
         parallel_type_id = parallel_types.index(parallel_type)
 
         # Create the interpolant
-        points = np.column_stack((x, y))
+        points = np.asarray(np.column_stack((x, y)), dtype=np.float64)
+        z = np.asarray(z, dtype=np.float64)
         self.interp = ams_point_interpolant_2d(
             points,
             z,
-            np.array([]),  # Not used for the moment
-            np.array([]),  # Not used for the moment
+            np.empty((0, 2), dtype=np.float64),  # Not used for the moment
+            np.empty(0, dtype=np.float64),        # Not used for the moment
             depth=depth,
             degree=degree,
             solve_depth=solve_depth,
@@ -128,7 +129,7 @@ class AMSInterpolant(Interpolant):
     def __call__(self, x, y):
         """Evaluates the interpolant at the x, y locations"""
         eval_pts = np.column_stack((x.flatten(), y.flatten()))
-        return self.interp.eval(eval_pts)
+        return self.interp.eval(eval_pts).reshape(x.shape)
 
     @staticmethod
     def preferred_scale_factor(x_ref, y_ref, x_int, y_int):
@@ -156,4 +157,4 @@ class AMSInterpolant(Interpolant):
 
         scale_factor = (2 * max_dist) / max_input_extent
 
-        return scale_factor
+        return float(scale_factor)

@@ -67,7 +67,6 @@ GRIDDED_METHODS = [
     "amle",
     "navier-stokes",
     "telea",
-    "shiftmap",
 ]
 EXPERIMENTAL_GRIDDED_METHODS = ["shiftmap", "ebi"]
 
@@ -105,16 +104,22 @@ def show_interpolation_results(
     If scatter_xs/ys/values are provided, the left panel shows the scattered
     input points instead of the elevation grid (useful for XYZ input data).
     """
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 6), layout="constrained")
     extent = [xs_mat.min(), xs_mat.max(), ys_mat.min(), ys_mat.max()]
     vmin = np.nanmin(elevation_int)
     vmax = np.nanmax(elevation_int)
 
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 6), layout="compressed")
+
     # Left panel: scattered input points or original grid
     if scatter_xs is not None:
         sc = axes[0].scatter(
-            scatter_xs, scatter_ys, c=scatter_values, s=5,
-            cmap=colormap, vmin=vmin, vmax=vmax
+            scatter_xs,
+            scatter_ys,
+            c=scatter_values,
+            s=5,
+            cmap=colormap,
+            vmin=vmin,
+            vmax=vmax,
         )
         axes[0].set_xlim(extent[0], extent[1])
         axes[0].set_ylim(extent[2], extent[3])
@@ -127,7 +132,7 @@ def show_interpolation_results(
             vmin=vmin,
             vmax=vmax,
             extent=extent,
-            aspect="auto",
+            aspect="equal",
         )
         if highlight_interpolated_area:
             mask_overlay = np.where(mask_int == 1, 1.0, np.nan)
@@ -137,13 +142,11 @@ def show_interpolation_results(
                 cmap="autumn",
                 alpha=0.4,
                 extent=extent,
-                aspect="auto",
+                aspect="equal",
             )
             axes[0].legend(
                 handles=[
-                    mpatches.Patch(
-                        color="red", alpha=0.4, label="Area to interpolate"
-                    )
+                    mpatches.Patch(color="red", alpha=0.4, label="Area to interpolate")
                 ],
                 loc="lower right",
             )
@@ -159,7 +162,7 @@ def show_interpolation_results(
         vmin=vmin,
         vmax=vmax,
         extent=extent,
-        aspect="auto",
+        aspect="equal",
     )
     axes[1].set_title("Interpolated")
     axes[1].set_xlabel(x_var_name)
@@ -340,6 +343,7 @@ def run_scattered_interpolation(
         )
     elif method == "mlp":
         from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
+
         interpolant = MLPInterpolant(
             xs_ref, ys_ref, elevation_ref
         )  # TODO: set parameters from command line!
@@ -420,8 +424,14 @@ def run_scattered_interpolation(
 
 
 def run_gridded_inpainting(
-    params, elevation_src, elevation_int, mask_int,
-    cur_work_area, area_idx, num_areas, condp
+    params,
+    elevation_src,
+    elevation_int,
+    mask_int,
+    cur_work_area,
+    area_idx,
+    num_areas,
+    condp,
 ):
     """Runs the gridded inpainting method for a single work area.
 
@@ -433,11 +443,11 @@ def run_gridded_inpainting(
     cmin, cmax = np.where(cols)[0][[0, -1]]
 
     # Extract this region; inpainting mask is the inverse of mask_int by convention
-    cur_inpaint_mask = np.copy(~mask_int[rmin:rmax + 1, cmin:cmax + 1])
-    cur_elevation = np.copy(elevation_src[rmin:rmax + 1, cmin:cmax + 1])
+    cur_inpaint_mask = np.copy(~mask_int[rmin : rmax + 1, cmin : cmax + 1])
+    cur_elevation = np.copy(elevation_src[rmin : rmax + 1, cmin : cmax + 1])
     # Exclude cells outside the marked area from inpainting
     cur_inpaint_mask = np.logical_or(
-        cur_inpaint_mask, ~cur_work_area[rmin:rmax + 1, cmin:cmax + 1]
+        cur_inpaint_mask, ~cur_work_area[rmin : rmax + 1, cmin : cmax + 1]
     )
     # Initializer / boundary condition for cells with unknown data
     cur_elevation[np.isnan(cur_elevation)] = 0
@@ -463,7 +473,7 @@ def run_gridded_inpainting(
         condp.print("- Inpainting took a total of {:.2f} sec.".format(timer() - ts))
 
     # Paste results back (slice reference avoids a copy)
-    elevation_slice = elevation_int[rmin:rmax + 1, cmin:cmax + 1]
+    elevation_slice = elevation_int[rmin : rmax + 1, cmin : cmax + 1]
     elevation_slice[~cur_inpaint_mask] = cur_elevation_int[~cur_inpaint_mask]
 
 

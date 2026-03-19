@@ -91,7 +91,7 @@ class FDPDEInpainter(ABC):
         self.convolver = Convolver(self.convolver_type)
         self.use_direct_solver = kwargs.pop("use_direct_solver", False)
         self.direct_solver = kwargs.pop("direct_solver", "cg")
-        self.cg_term_thres = kwargs.pop("cg_term_thres", 1e-6)
+        self.cg_term_thres = kwargs.pop("cg_term_thres", 1e-4)
         self.debug_dir = kwargs.pop("debug_dir", "")
         self.term_criteria = kwargs.pop("term_criteria", "relative")
         self.ts = 0  # ts is just a timer used to print the execution time of some of the steps
@@ -385,9 +385,7 @@ class FDPDEInpainter(ABC):
             return image.copy()
 
         if self.convolver_type.startswith("masked"):
-            mask_inp = (
-                cv2.dilate(mask_inv.astype("uint8"), np.ones((3, 3))) == 1
-            )
+            mask_inp = cv2.dilate(mask_inv.astype("uint8"), np.ones((3, 3))) == 1
         else:
             mask_inp = None
 
@@ -418,8 +416,7 @@ class FDPDEInpainter(ABC):
             f"  Sparse solver: {self.direct_solver}, unknowns: {n}, "
             f"rtol: {self.cg_term_thres}"
         )
-        x, info = solver(A, rhs, x0=x0, rtol=self.cg_term_thres,
-                         maxiter=self.max_iters)
+        x, info = solver(A, rhs, x0=x0, rtol=self.cg_term_thres, maxiter=self.max_iters)
 
         if info > 0:
             print(

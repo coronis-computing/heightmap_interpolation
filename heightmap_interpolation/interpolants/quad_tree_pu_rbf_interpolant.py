@@ -284,7 +284,7 @@ class QuadTreePURBFInterpolant(Interpolant):
 
         # --- Debug ---
         # self.plot()
-        self.show_interpolant_stats()
+        # self.show_interpolant_stats()
 
         # Compute a local RBF interpolator for each leaf
         self.root.compute_rbf_interpolant_at_leaves(**kwargs)

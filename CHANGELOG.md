@@ -20,3 +20,5 @@ Starting from v1.1.0, all version-specific notable changes to this project will 
     - `print_netcdf.py`
 * Updated github actions with publication to `testpypi` for each commit to the `master` branch and publication to `pypi` for each release.
 * Updated the docs to reflect the new methods/solvers/parameters (excluding experimental methods).
+* Changed the way results are shown on screen if --show parameter is used. Also, now the user may change the colormap (`--colormap`) or highlight the areas to interpolate (`--highlight_interpolated_area`).
+* Added two demos showing the behaviour of the two types of methods in the package with synthetic data and using default parameters: `tests/demo_scattered_interpolants.py` and `tests/demo_gridded_inpainters.py`.
