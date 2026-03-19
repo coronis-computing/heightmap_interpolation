@@ -6,6 +6,8 @@ from heightmap_interpolation.inpainting.fd_pde_inpainter import FDPDEInpainter
 
 
 class AMLEInpainter(FDPDEInpainter):
+    supports_direct_solver = False
+
     """Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
 
     Implements the method in:

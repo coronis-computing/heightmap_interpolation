@@ -15,6 +15,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
@@ -35,6 +37,90 @@ from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
 
 # Common functions to use in the apps main functions
+
+SCATTERED_METHODS = [
+    "nearest",
+    "linear",
+    "cubic",
+    "rbf",
+    "purbf",
+    "ams",
+]
+EXPERIMENTAL_SCATTERED_METHODS = ["mlp"]
+GRIDDED_METHODS = [
+    "harmonic",
+    "tv",
+    "ccst",
+    "amle",
+    "navier-stokes",
+    "telea",
+    "shiftmap",
+]
+EXPERIMENTAL_GRIDDED_METHODS = ["shiftmap", "ebi"]
+
+
+def get_available_scattered_methods():
+    if experimental_features_available():
+        return SCATTERED_METHODS + EXPERIMENTAL_SCATTERED_METHODS
+    else:
+        return SCATTERED_METHODS
+
+
+def get_available_gridded_methods():
+    if experimental_features_available():
+        return GRIDDED_METHODS + EXPERIMENTAL_GRIDDED_METHODS
+    else:
+        return GRIDDED_METHODS
+
+
+def show_interpolation_results(
+    elevation,
+    elevation_int,
+    mask_int,
+    xs_mat,
+    ys_mat,
+    x_var_name="x",
+    y_var_name="y",
+    colormap="terrain",
+    highlight_interpolated_area=False,
+):
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 6), layout="constrained")
+    images = [elevation, elevation_int]
+    titles = ["Original", "Interpolated"]
+    extent = [xs_mat.min(), xs_mat.max(), ys_mat.min(), ys_mat.max()]
+    vmin = np.nanmin(elevation)
+    vmax = np.nanmax(elevation)
+    for ax, image, title in zip(axes, images, titles):
+        im = ax.imshow(
+            image,
+            origin="lower",
+            cmap=colormap,
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            aspect="auto",
+        )
+        ax.set_title(title)
+        ax.set_xlabel(x_var_name)
+        ax.set_ylabel(y_var_name)
+    if highlight_interpolated_area:
+        mask_overlay = np.where(mask_int == 1, 1.0, np.nan)
+        axes[0].imshow(
+            mask_overlay,
+            origin="lower",
+            cmap="autumn",
+            alpha=0.4,
+            extent=extent,
+            aspect="auto",
+        )
+        axes[0].legend(
+            handles=[
+                mpatches.Patch(color="red", alpha=0.4, label="Area to interpolate")
+            ],
+            loc="lower right",
+        )
+    fig.colorbar(im, ax=axes.tolist(), shrink=0.6, label="Elevation (m)")
+    plt.show(block=True)
 
 
 def add_common_fd_pde_inpainters_args(parser):
@@ -123,6 +209,20 @@ def add_common_fd_pde_inpainters_args(parser):
         type=str,
         help="If set, debugging information will be stored in this directory (useful to visualize the inpainting progress)",
     )
+    parser.add_argument(
+        "--use_direct_solver",
+        action="store_true",
+        help="Use a direct solver instead of an iterative one",
+    )
+    parser.add_argument(
+        "--cg_term_thres",
+        type=float,
+        default=1e-6,
+        help="Convergence tolerance (rtol) for the sparse CG/minres solver "
+        "when --use_direct_solver is set. This is independent of "
+        "--term_thres and --term_criteria, which only apply to the "
+        "iterative solver (default: 1e-6)",
+    )
     return parser
 
 
@@ -144,6 +244,8 @@ def get_common_fd_pde_inpainters_params_from_args(params):
         "init_with": params.init_with,
         "convolver": params.convolver,
         "debug_dir": params.debug_dir,
+        "use_direct_solver": params.use_direct_solver,
+        "cg_term_thres": params.cg_term_thres,
     }
     return options
 

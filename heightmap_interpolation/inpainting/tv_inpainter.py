@@ -9,6 +9,8 @@ class TVInpainter(FDPDEInpainter):
     Inpainter minimizing Total Variation
     """
 
+    supports_direct_solver = False
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # --- Gather and check the input parameters ---

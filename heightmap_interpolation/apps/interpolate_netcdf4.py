@@ -22,7 +22,6 @@ import argparse
 import math
 from timeit import default_timer as timer
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 # All interpolation methods
@@ -30,6 +29,9 @@ from heightmap_interpolation.apps.apps_common import (
     add_subparsers,
     create_inpainter_from_params,
     experimental_features_available,
+    show_interpolation_results,
+    get_available_scattered_methods,
+    get_available_gridded_methods,
 )
 from heightmap_interpolation.apps.netcdf_data_io import (
     load_interpolation_input_data,
@@ -95,7 +97,7 @@ def interpolate(params):
             num_cells_to_interpolate = np.count_nonzero(mask_int)
             interp_percent = (num_cells_to_interpolate / total_cells) * 100
             condp.print(
-                "    - Cells to interpolate represent a {:.2f}% of the image:".format(
+                "    - Cells to interpolate represent {:.2f}% of the image:".format(
                     interp_percent
                 )
             )
@@ -111,22 +113,25 @@ def interpolate(params):
                 )
             )
 
+    # Methods available
+    scattered_methods = get_available_scattered_methods()
+    gridded_methods = get_available_gridded_methods()
+
+    requested_method = params.subparser_name.lower()
+    if (
+        requested_method not in scattered_methods
+        and requested_method not in gridded_methods
+    ):
+        # Since the requested method is specified via subparser, the only option for not being present on the list is that is an experimental feature and the package was not requested to include them when installed
+        raise ValueError(
+            f"Experimental method {requested_method} requested, but the experimental dependencies were not installed (use pip install heightmap_interpolation[experimental])"
+        )
+
     for i in range(work_areas.shape[2]):
         # Get the current working area
         cur_work_area = work_areas[:, :, i]
 
         # --- Scattered data interpolation ---
-        scattered_methods = [
-            "nearest",
-            "linear",
-            "cubic",
-            "rbf",
-            "purbf",
-            "ams",
-        ]
-        if experimental_features_available:
-            scattered_methods.append("mlp")
-
         if params.subparser_name.lower() in scattered_methods:
             # Get the reference points from the current working area
             cur_mask_ref = np.logical_and(mask_ref, cur_work_area)
@@ -315,17 +320,6 @@ def interpolate(params):
             interpolant.cleanup()
 
         # --- Gridded data interpolation/inpainting ---
-        gridded_methods = [
-            "harmonic",
-            "tv",
-            "ccst",
-            "ccst-ti",
-            "amle",
-            "navier-stokes",
-            "telea",
-            "shiftmap",
-            "ebi",
-        ]
         if params.subparser_name.lower() in gridded_methods:
             # if params.areas:
             # Get the bounding box of the current working area (inpainters work on full 2D grids...)
@@ -399,15 +393,18 @@ def interpolate(params):
 
     # Show results
     if params.show:
-        condp.print("- Showing results")
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 15))
-        images = [elevation, elevation_int]
-        titles = ["Original", "Interpolated"]
-        for ax, image, title in zip(axes, images, titles):
-            ax.imshow(image, origin="lower")
-            ax.set_title(title)
-        fig.tight_layout()
-        plt.show(block=True)
+        condp.print("- Showing results (close the emerging window to finish)")
+        show_interpolation_results(
+            elevation,
+            elevation_int,
+            mask_int,
+            xs_mat,
+            ys_mat,
+            x_var_name=params.x_var,
+            y_var_name=params.y_var,
+            colormap=params.colormap,
+            highlight_interpolated_area=params.highlight_interpolated_area,
+        )
 
 
 def parse_args(args=None):
@@ -492,6 +489,21 @@ def parse_args(args=None):
         dest="show",
         default=False,
         help="Show interpolation problem and results on screen",
+    )
+    parser.add_argument(
+        "--colormap",
+        action="store",
+        type=str,
+        dest="colormap",
+        default="terrain",
+        help="Matplotlib colormap used when showing results (default: terrain)",
+    )
+    parser.add_argument(
+        "--highlight_interpolated_area",
+        action="store_true",
+        dest="highlight_interpolated_area",
+        default=False,
+        help="Highlight the area to interpolate in the results plot",
     )
 
     add_subparsers(subparsers)

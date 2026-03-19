@@ -31,13 +31,19 @@ pip install .
 
 ## Usage
 
-After installation, you should have the main entry point for interpolating NetCDF4 datasets already in the path, so you can call:
+This package installs two tools for interpolating from the command line: 
+
+* `interpolate_netcdf4`: interpolates an already-gridded dataset in a NetCDF4 file.
+* `interpolate_xyz`: takes a set of points (XYZ coordinates in a text file, one line each), creates a grid, and fills this grid with the interpolated values.
+
+You can check the parameters of both tools with the `--help` argument:
 
 ```
 interpolate_netcdf4 --help
+interpolate_xyz --help
 ```
 
-Since this package was developed within the EMODnet Bathymetry project, for the moment no other inputs are expected. For other inputs, take the code in the `apps/interpolate_netcdf4.py` script as reference and use directly the different interpolation modules at your convenience. 
+For other uses, take the code in the `apps/interpolate_netcdf4.py` script as reference and use directly the different interpolation modules at your convenience. 
 
 ## Docker
 

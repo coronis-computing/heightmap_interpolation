@@ -28,6 +28,9 @@ import numpy as np
 from heightmap_interpolation.apps.apps_common import (
     add_subparsers,
     create_inpainter_from_params,
+    experimental_features_available,
+    get_available_scattered_methods,
+    get_available_gridded_methods,
 )
 from heightmap_interpolation.apps.netcdf_data_io import (
     create_work_areas,
@@ -35,7 +38,6 @@ from heightmap_interpolation.apps.netcdf_data_io import (
 )
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.linear_interpolant import LinearInterpolant
-from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
 
 # All interpolation methods
 from heightmap_interpolation.interpolants.nearest_neighbor_interpolant import (
@@ -46,6 +48,13 @@ from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import (
 )
 from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 from heightmap_interpolation.misc.conditional_print import ConditionalPrint
+
+if experimental_features_available():
+    from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
+
+from heightmap_interpolation.interpolants.ams_interpolant import (
+    AMSInterpolant,
+)
 
 
 def load_interpolation_input_data_xyz(
@@ -193,7 +202,7 @@ def rasterize(params):
             num_cells_to_interpolate = len(elevation_int)
             interp_percent = (num_cells_to_interpolate / total_cells) * 100
             condp.print(
-                "    - Cells to interpolate represent a {:.2f}% of the image:".format(
+                "    - Cells to interpolate represent {:.2f}% of the image:".format(
                     interp_percent
                 )
             )
@@ -209,12 +218,42 @@ def rasterize(params):
                 )
             )
 
+    # Methods available
+    scattered_methods = [
+        "nearest",
+        "linear",
+        "cubic",
+        "rbf",
+        "purbf",
+        "ams",
+    ]
+    if experimental_features_available():
+        scattered_methods.append("mlp")
+    gridded_methods = [
+        "harmonic",
+        "tv",
+        "ccst",
+        "amle",
+        "navier-stokes",
+        "telea",
+        "shiftmap",
+    ]
+    if experimental_features_available():
+        gridded_methods.extend(["shiftmap", "ebi"])
+
+    requested_method = params.subparser_name.lower()
+    if (
+        requested_method not in scattered_methods
+        and requested_method not in gridded_methods
+    ):
+        raise ValueError(f"Unknown method {requested_method}")
+
     for i in range(work_areas.shape[2]):
         # Get the current working area
         cur_work_area = work_areas[:, :, i]
 
         # --- Scattered data interpolation ---
-        scattered_methods = ["nearest", "linear", "cubic", "rbf", "purbf", "mlp"]
+
         if params.subparser_name.lower() in scattered_methods:
             mask_int = np.ones_like(
                 elevation_int
@@ -304,7 +343,51 @@ def rasterize(params):
                 interpolant = MLPInterpolant(
                     xs_ref, ys_ref, elevation_ref
                 )  # TODO: set parameters from command line!
-
+            elif params.subparser_name.lower() == "ams":
+                suggested_scale = AMSInterpolant.preferred_scale_factor(
+                    xs_ref, ys_ref, xs_int, ys_int
+                )
+                if suggested_scale > params.scale:
+                    print(
+                        f"\n[WARNING] The requested scale parameter is too small to include some of the points to interpolate within the query domain. Changing it to {suggested_scale}"
+                    )
+                    ams_scale = suggested_scale
+                else:
+                    ams_scale = params.scale
+                interpolant = AMSInterpolant(
+                    xs_ref,
+                    ys_ref,
+                    elevation_ref,
+                    depth=params.depth,
+                    degree=params.degree,
+                    solve_depth=params.solve_depth,
+                    full_depth=params.full_depth,
+                    base_depth=params.base_depth,
+                    boundary_type=params.boundary_type,
+                    iters=params.iters,
+                    base_v_cycles=params.base_v_cycles,
+                    max_memory_gb=params.max_memory_gb,
+                    parallel_type=params.parallel_type,
+                    parallel_schedule=params.parallel_schedule,
+                    parallel_thread_chunk_size=params.parallel_thread_chunk_size,
+                    value_weight=params.value_weight,
+                    gradient_weight=params.gradient_weight,
+                    scale=ams_scale,
+                    width=params.width,
+                    cg_accuracy=params.cg_accuracy,
+                    iso=params.iso,
+                    laplacian_weight=params.laplacian_weight,
+                    bi_laplacian_weight=params.bi_laplacian_weight,
+                    show_performance=params.show_performance,
+                    show_residual=params.show_residual,
+                    exact_interpolation=params.exact_interpolation,
+                    verbose=params.ams_verbose,
+                    transform_file=params.transform_file,
+                )
+            else:
+                raise ValueError(
+                    "Unknown interpolant type: {}".format(params.subparser_name)
+                )
             if params.verbose:
                 te = timer()
                 condp.print(" done, {:.2f} sec.".format(te - ts))
@@ -350,15 +433,6 @@ def rasterize(params):
             elevation_int[cur_work_area] = zi
 
         # --- Gridded data interpolation/inpainting ---
-        gridded_methods = [
-            "harmonic",
-            "tv",
-            "ccst",
-            "amle",
-            "navier-stokes",
-            "telea",
-            "shiftmap",
-        ]
         if params.subparser_name.lower() in gridded_methods:
             elevation_int, mask_int = samples_to_grid(
                 xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation_int
@@ -565,6 +639,21 @@ def parse_args(args=None):
         dest="show",
         default=False,
         help="Show interpolation problem and results on screen",
+    )
+    parser.add_argument(
+        "--colormap",
+        action="store",
+        type=str,
+        dest="colormap",
+        default="terrain",
+        help="Matplotlib colormap used when showing results (default: terrain)",
+    )
+    parser.add_argument(
+        "--highlight_interpolated_area",
+        action="store_true",
+        dest="highlight_interpolated_area",
+        default=False,
+        help="Highlight the area to interpolate in the results plot",
     )
 
     add_subparsers(subparsers)

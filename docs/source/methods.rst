@@ -308,6 +308,57 @@ Disadvantages
 
 * While compared to the pure RBF, reduction in computational requirements is huge, it may not be sufficient for processing large datasets (i.e., it will still be slower to compute than other options in this package).
 
+Adaptive Multi-grid Solver
+--------------------------
+
+The Adaptive Multi-grid Solver (AMS) method implements the `PointInterpolant` tool from the `AMS (a.k.a. PoissonRecon) project <https://github.com/mkazhdan/PoissonRecon>`_, via our `Python interface <https://github.com/coronis-computing/py_ams_point_interpolant>`_.
+
+This method solves for coefficients by minimizing an energy of the form :math:`E = D + S`, where the *data fitting* term :math:`D` tries to match values at sample points and the *smoothness regularization* :math:`S` penalizes roughness via Laplacian and bi-Laplacian terms. In this sense, the smoothness term resembles that in the CCST method below, allowing to also set relative weights to both **Laplacian** and **Bi-Laplacian** terms similarly to what the **tension** parameter is doing in :ref:`CCST <ccst_inpainter>`.
+
+Parameters
+++++++++++
+
+* ``--depth``: This integer is the maximum depth of the tree that will be used for surface reconstruction. Running at depth d corresponds to solving on a grid whose resolution is no larger than 2^d x 2^d x ... Note that since the reconstructor adapts the octree to the sampling density, the specified reconstruction depth is only an upper bound. (default: 8).
+* ``--degree``: Degree of the B-spline that is to be used to define the finite elements system. Larger degrees support higher order approximations, but come at the cost of denser system matrices (incurring a cost in both space and time). (default: 2).
+* ``--solve_depth``: the depth up to which the solver will solve the numerical system. It will still show the results at the finest resolution, but no additional high-frequency data will be introduced at the finest resolutions. It could also be the case that aliasing that occurs at the coarser resolutions will not get corrected. (default = -1, i.e., --depth).
+* ``--full_depth``: The depth up to which the octree is completely refined, i.e. a regular grid (default: 5).
+* ``--base_depth``: The coarsest depth at which the system will be solved over an octree. (At coarser levels it will be solved using a standard MG solver, with multiple V-Cycles, defined over a regular grid.) As such, the assumption is that BaseDepth<=FullDepth (default = -1, i.e., not used).
+* ``--boundary_type``: Boundary type (default: free, available: free, dirichlet, neumann).
+* ``--iters``: The number of Gauss-Seidel relaxations to be performed at every level of the hierarchy (default: 8).
+* ``--base_v_cycles``: coarse MG solver v-cycles (default: 4).
+* ``--max_memory_gb``: Maximum memory to use in GB (default: 0, i.e., no limit).
+* ``--parallel_type``: Parallel mode (default: openmp, available: openmp, threads, none").
+* ``--parallel_schedule``: Parallel schedule (default: static, available: static, dynamic).
+* ``--parallel_thread_chunk_size``: Parallel thread chunk size (default: 128).
+* ``--value_weight``: Importance that interpolation of the samples' values is given in the fitting of the function (default: 1000.0).
+* ``--gradient_weight``: Importance that interpolation of the samples' gradients is given in the fitting of the function (default: 1.0).
+* ``--scale``: The ratio between the diameter of the cube used for reconstruction and the diameter of the samples' bounding cube. (default: 1.1).
+* ``--width``: Target width of the finest level octree cells. This parameter is ignored if the --depth is also specified. (default: 0.0, i.e., ignore and use --depth).
+* ``--cg_accuracy``: Conjugate Gradient solver accuracy (default: 1e-3).
+* ``--iso``: Iso-value (default=0.0).
+* ``--laplacian_weight``: Importance that Laplacian regularization is given in the fitting of the function (default: 0.0).
+* ``--bi_laplacian_weight``: Importance that bi-Laplacian regularization is given in the fitting of the function (default: 1.0).
+* ``--show_performance``: Show performance statistics (default: false).
+* ``--show_residual``: Show residuals (default: false).
+* ``--exact_interpolation``: Use exact interpolation (default: false).
+* ``--ams_verbose``: Verbose mode for AMS, will print information during the creation of the interpolant (default: false).
+* ``--transform_file``: Transform file (default: none).
+
+Suitable for
+++++++++++++
+
+* Very large datasets.
+
+Advantages
+++++++++++
+
+* Excellent computation speed, it is the fastest method in the package by far.
+
+Disadvantages
++++++++++++++
+
+* The interpolations it provides for large areas of missing data may not be the best (although you may try tunning to non-default parameters to improve this).
+
 .. _pde_inpainters:
 
 PDE-based Inpainting Interpolators
@@ -317,32 +368,106 @@ Our heightmaps are bivariate functions of the form :math:`u(x, y) = z`, where x/
 
 A simple way of defining the interpolant is to define the properties that the "interpolating surface" :math:`f(u)` must satisfy at interpolated areas using Partial Differential Equations (PDEs).
 
-Once defined a given PDE, we can solve it using finite differences in a gradient-descent manner, where:
+Once defined a given PDE, we can solve it using finite differences. In this project we implement two solvers described in the :ref:`pde_iterative_solver` and :ref:`pde_direct_solver` sections. 
+Moreover, both solvers can benefit from both the :ref:`different initializers <inpainting_initializer>` and the :ref:`Multi-grid solver <inpainting_mgs>` to speed up their execution for large datasets. 
+Note that the parameters listed in all these sections are common to all the methods, and that method-specific parameters are defined in their corresponding sections.
+
+.. _pde_iterative_solver:
+
+Iterative Solver
+----------------
+
+It uses the gridded nature of the problem to solve it in a gradient-descent manner, where:
 
 .. math::
     f(u)_{t+1} = u_t - \phi*\nabla(f(u_t))
 
 Being the subindex :math:`t` the iteration index, :math:`\nabla(f(u_t))` the PDE or the *gradient* that we need to follow, \phi the size of the update step at each iteration. Given a properly small :math:`\phi`, we can iterate the equation above to *steady state* (i.e., no change) in order to solve for the functional.
 
-Using discretized differential stencils, we can work directly on the input cell grid, and evolve the previous equation using just convolutions.
+Using discretized differential stencils, we can work directly on the input cell grid, and evolve the previous equation using just convolutions or use direct solvers (for those PDEs not containing non-linear terms).
 
-We implement all the methods in this section using the same PDE solver. Therefore, there is a set of parameters that are common to all the methods (see :ref:`common_pde_inpainting_parameters`).
-Before listing them, we explain in the next sections some of the speed-up tricks that we use to accelerate the classical gradient descent optimization.
+Parameters
+++++++++++
 
-Speed-Up Tricks
----------------
+All the methods in this section may use the iterative PDE solver. Therefore, there is a set of parameters that are common to all the methods if using this solver:
 
-The convergence speed of the gradient descent optimization on the inpainted area is highly dependant on the initial values.
-It is not the same trying to evolve the solution using the optimization starting from a very vague solution (e.g. all unknowns initial value is zero)
-than starting from initial values closer to the solution. In this direction, we provide two ways of better initialize the
-problem in :ref:`inpainting_initializer` and :ref:`inpainting_mgs` below.
+* ``--update_step_size`` (float): gradient descent step size. A default is provided by each method. However, depending on the problem, you could tune it to a higher value to speed-up convergence (but beware of overshooting and missing the minimum!).
+* ``--term_criteria`` (string): the termination criteria to use. Available:
+
+    - ``relative``: stop if the relative change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute``: stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
+    - ``absolute_percent`` (default): stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres`` multiplied by the absolute range of depths in the dataset (i.e., the absolute value is range_depths * absolute_change_percent).
+
+* ``--term_thres`` (float): stop the optimization when the energy descent between iterations is less than this value. Its meaning depends on ``--term_criteria``.
+* ``--term_check_iters`` (int): since checking for the termination criteria may be costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
+* ``--max_iters`` (int): maximum number of iterations for the optimizer (will end the optimization even if there is no convergence on the minimization).
+* ``--relaxation`` (float): over-relaxation parameter. *This paramter  is still under testing, use with care*.
+* ``--print_progress`` (bool): print information about the progress of the optimization on screen.
+* ``--print_progress_iters`` (int): If print_progress==True, the information will be printed every this number of iterations.
+* ``--convolver`` (str): the convolver used for all the convolutions required by the solver. Available: 'opencv' (default),'scipy-signal', 'scipy-ndimage', 'masked', 'masked-parallel'. This parameter is for testing purposes, the 'opencv' convolver was proven the fastest of the options in all cases, so you should leave it in its default value.
+* ``--debug_dir`` (str): if set, a debug directory in the specified path will be created, and intermediate steps will be rendered as images. Useful to create a video of the evolution of the solver.
+
+Advantages
+++++++++++
+
+* Memory efficient: the solution is found on the same grid that is already loaded in memory.
+* Can be used to solve all the PDEs in this package.
+
+Disadvantages
++++++++++++++
+
+* Slower than the direct solver, use the proper initializer and multi-grid approach to speed up for large datasets.
+
+.. _pde_direct_solver:
+
+Direct Solver
+-------------
+
+The :ref:`pde_iterative_solver` provides a nice memory footprint (i.e., it solves on the grid, so it does not require more memory than the grid itself). However, it may require thousands or millions of iterations to converge, since :math:`\phi*\nabla(f(u_t))` must be small for stability.
+
+The Direct solver reframes it as an algebra problem. Since :math:`\phi*\nabla(f(u_t))` (the **step function**) is a linear combination of neighbouring pixels (a convolution stencil), the condition :math:`\phi*\nabla(f(u_t)) = 0` at every unknown pixel is just a system of linear equations:
+
+.. math::
+    A x = b
+
+where:
+
+* :math:`x` is the vector of unknown pixel values we want to find
+* Each row of :math:`A` encodes how one unknown pixel's stencil depends on its unknown neighbours
+* :math:`b` encodes the contribution from the known (boundary) pixels
+
+Solving this system gives the converged solution in one shot, bypassing all the iterative steps. However, the main limitation of this solver is that it only works when :math:`\phi*\nabla(f(u_t))` is truly linear in :math:`f(u_t)`. For methods where the stencil coefficients themselves depend on f (as in :ref:`TV <tv_inpainter>` or :ref:`AMLE <amle_inpainter>` below), there is no fixed matrix :math:`A` and the approach is invalid. Therefore, this solver is only available for the :ref:`harmonic <harmonic_inpainter>` and :ref:`CCST <ccst_inpainter>` inpainters.
+
+Parameters
+++++++++++
+
+This solver shares some of the parameters seen for the :ref:`pde_iterative_solver`, but their meaning may differ:
+
+* ``--cg_term_thres`` (float): the conjugate gradient solver when the energy is less than this value. Its meaning depends on ``--term_criteria``.
+* ``--max_iters`` (int): maximum number of iterations passed to the Conjugate Gradient solver used to solve the linear systems.
+* ``--convolver`` (str): the convolver used for all the convolutions required by the solver. Available: 'opencv' (default),'scipy-signal', 'scipy-ndimage', 'masked', 'masked-parallel'. This parameter is for testing purposes, the 'opencv' convolver was proven the fastest of the options in all cases, so you should leave it in its default value.
+* ``--print_progress_iters`` (int): If print_progress==True, the information will be printed every this number of iterations.
+* ``--debug_dir`` (str): if set, a debug directory in the specified path will be created, and debug results will be generated (testing purposes).
+
+Advantages
+++++++++++
+
+* Faster than the iterative solver.
+
+Disadvantages
++++++++++++++
+
+* Only applicable to :ref:`harmonic <harmonic_inpainter>` and :ref:`CCST <ccst_inpainter>` inpainters (does not allow non-linearities on the stencil equation).
+* For large empty areas to fill, the initialization may dominate and not change much after solving.
 
 .. _inpainting_initializer:
 
 Initializer
-+++++++++++
+-----------
 
-The initializers available are:
+The convergence speed of both the gradient descent optimization or the direct solver on the inpainted area is highly dependant on the initial values.
+It is not the same trying to evolve the solution using the optimization starting from a very vague solution (e.g. all unknowns initial value is zero)
+than starting from initial values closer to the solution. In this direction, we provide the following initializers, specified via the ``--init_with`` parameter:
 
 * *zeros*: init unknown values with zeros. This is the worst initializer, just kept here for comparison purposes with the rest.
 * *mean*: init unknown values with a constant equal to the mean of the reference elevation values.
@@ -354,9 +479,9 @@ The initializers available are:
 .. _inpainting_mgs:
 
 Multi-Grid Solver
-+++++++++++++++++
+-----------------
 
-By setting the proper parameters, the ``interpolate_netcdf4.py`` function will use a Multi-Grid Solver (MGS). Basically, instead of solving the optimization problem at the full resolution grid directly, it will do it in a multi-resolution way.
+We also provide an optional Multi-Grid Solver (MGS). Basically, instead of solving the optimization problem at the full resolution grid directly, it will do it in a multi-resolution way.
 
 The MGS starts building a pyramid of different levels of resolution from the original grid, where each level of the pyramid contains a halved resolution version of the previous one:
 
@@ -371,33 +496,13 @@ Then, starting from the coarser level, we solve the inpainting problem there, an
 Therefore, we use upscaled versions of the problem solved at coarser resolutions to initialize the inpainting problem at higher resolutions.
 In this way, the initial values of the optimization at each level of the pyramid are closer to the final solution, decreasing like this the number of iterations required for convergence.
 
-Note that, when using the MGS, the ``--init_with`` parameter (corresponding to the :ref:`inpainting_initializer`) will just affect the initialization of the lowest-resolution level of the pyramid.
+Parameters
+++++++++++
 
-.. _common_pde_inpainting_parameters:
-
-Common Parameters
------------------
-
-The parameters that are common to all PDE-based interpolators affect the behaviour of the Finite-Differences solver:
-
-* ``--update_step_size`` (float): gradient descent step size. A default is provided by each method. However, depending on the problem, you could tune it to a higher value to speed-up convergence (but beware of overshooting and missing the minimum!).
-* ``--term_criteria`` (string): the termination criteria to use. Available:
-
-    - ``relative``: stop if the relative change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
-    - ``absolute``: stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres``.
-    - ``absolute_percent`` (default): stop if all cells absolute change between the inpainted elevations in the current and a previous step is smaller than the value in ``--term_thres`` multiplied by the absolute range of depths in the dataset (i.e., the absolute value is range_depths * absolute_change_percent).
-
-* ``--term_thres`` (float): stop the optimization when the energy descent between iterations is less than this value. Its meaning depends on ``--term_criteria``.
-* ``--term_check_iters`` (int): since checking for the termination criteria may be costly, we just perform the check for the relative change between iterations of the optimizer every this number of iterations.
-* ``--max_iters`` (int): maximum number of iterations for the optimizer (will end the optimization even if there is no convergence on the minimization).
-* ``--relaxation`` (float): over-relaxation parameter. *This paramter  is still under testing, use with care*.
 * ``--mgs_levels`` (int): number of levels of detail to use in the Mult-Grid Solver (MGS, see :ref:`inpainting_mgs`). Setting it to 1 deactivates the MGS.
 * ``--mgs_min_res`` (int): minimum resolution (width or height) allowed for a level in the MGS. If the level of detail in the pyramid gets to a value lower than this, the pyramid construction will stop.
-* ``--init_with`` (str): initializer for the unknown data before applying the optimization (see . Available initializers: 'nearest' (default), 'linear', 'cubic', 'harmonic'.
-* ``--print_progress`` (bool): print information about the progress of the optimization on screen.
-* ``--print_progress_iters`` (int): If print_progress==True, the information will be printed every this number of iterations.
-* ``--convolver_type`` (str): the convolver used for all the convolutions required by the solver. Available: 'opencv' (default),'scipy-signal', 'scipy-ndimage', 'masked', 'masked-parallel'. This parameter is for testing purposes, the 'opencv' convolver was proven the fastest of the options in all cases, so you should leave it in its default value.
-* ``--debug_dir`` (str): if set, a debug directory in the specified path will be created, and intermediate steps will be rendered as images. Useful to create a video of the evolution of the solver.
+
+Note that, when using the MGS, the ``--init_with`` parameter (corresponding to the :ref:`inpainting_initializer`) will just affect the initialization of the lowest-resolution level of the pyramid.
 
 .. _harmonic_inpainter:
 
@@ -425,7 +530,7 @@ This method has many analogies:
 Parameters
 ++++++++++
 
-This inpainter only depends on the common parameters defined in :ref:`common_pde_inpainting_parameters`.
+No specific parameters for this method.
 
 Suitable for
 ++++++++++++
@@ -442,6 +547,8 @@ Disadvantages
 +++++++++++++
 
 * Does not work well with sparsely sampled data: isolated data points will not contribute much to the interpolation.
+
+.. _tv_inpainter:
 
 Total Variation (TV) Inpainter
 ------------------------------
@@ -470,8 +577,6 @@ However, it will not take into account isolated points, and should only be used 
 Parameters
 ++++++++++
 
-In addition to the common inpainter parameters defined in :ref:`common_pde_inpainting_parameters`, this method has the following specific parameters:
-
 * ``--epsilon``: the :math:`\epsilon` parameter in the formula above. It is just a small value used in the normalization factor :math:`N_{epsilon}(u)` so that the denominator is never zero.
 
 Suitable for
@@ -488,6 +593,8 @@ Disadvantages
 +++++++++++++
 
 * Does not work well with sparsely sampled data: isolated data points will not contribute much to the interpolation.
+
+.. _ccst_inpainter:
 
 Continous Curvature Splines in Tension (CCST) Inpainter
 -------------------------------------------------------
@@ -524,8 +631,6 @@ Note that this is a re-implementation/variant of the method in [Smith90]_, which
 Parameters
 ++++++++++
 
-In addition to the common inpainter parameters defined in :ref:`common_pde_inpainting_parameters`, this method has the following specific parameters:
-
 * ``--tension``: the parameter corresponding to the :math:`t` constant in equation :eq:`eq_ccst`, responsible for tuning the mixture between an harmonic and a biharmonic interpolant.
 
 Suitable for
@@ -544,6 +649,8 @@ Disadvantages
 
 * Slower execution time than other inpainters.
 * Depending on the parameters, it may overshoot the data.
+
+.. _amle_inpainter:
 
 Absolutely Minimizing Lipschitz Extension (AMLE) Inpainter
 ----------------------------------------------------------
@@ -572,7 +679,7 @@ Also, it handles "isolated points" in the reference data.
 Parameters
 ++++++++++
 
-This inpainter only depends on the common parameters defined in :ref:`common_pde_inpainting_parameters`.
+This inpainter only depends on the parameters of the solver (see .
 
 Suitable for
 ++++++++++++

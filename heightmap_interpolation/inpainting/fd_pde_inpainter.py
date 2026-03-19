@@ -24,6 +24,7 @@ from timeit import default_timer as timer
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.sparse.linalg import LinearOperator, cg, minres
 from heightmap_interpolation.inpainting.initializer import Initializer
 from heightmap_interpolation.inpainting.convolver import Convolver
 from heightmap_interpolation.inpainting.update_at_mask import update_at_mask
@@ -31,6 +32,8 @@ from heightmap_interpolation.misc.image_proc import halve_image
 
 
 class FDPDEInpainter(ABC):
+    # Subclasses with a non-linear step_fun must set this to False
+    supports_direct_solver = True
     """Abstract base class for Finite-Differences Partial Differential Equation (FDPDE) Inpainters
 
     Common interphase for PDE-based inpainting methods. Solves the problem using finite differences in a gradient-descent manner.
@@ -48,6 +51,11 @@ class FDPDEInpainter(ABC):
         init_with (str): initializer for the unknown data before applying the optimization.
         convolver_type (str): the convolver used for all the convolutions required by the solver.
         debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
+        use_direct_solver (bool): if True, solve as a sparse linear system instead of
+            time-stepping (only valid for linear PDEs).
+        direct_solver (str): sparse solver to use when use_direct_solver=True.
+            Either 'cg' (conjugate gradient, for SPD systems) or 'minres'
+            (for symmetric indefinite). Default: 'cg'.
     """
 
     def __init__(self, **kwargs):
@@ -81,6 +89,9 @@ class FDPDEInpainter(ABC):
         self.init_with = kwargs.pop("init_with", "zeros")
         self.convolver_type = kwargs.pop("convolver", "masked")
         self.convolver = Convolver(self.convolver_type)
+        self.use_direct_solver = kwargs.pop("use_direct_solver", False)
+        self.direct_solver = kwargs.pop("direct_solver", "cg")
+        self.cg_term_thres = kwargs.pop("cg_term_thres", 1e-6)
         self.debug_dir = kwargs.pop("debug_dir", "")
         self.term_criteria = kwargs.pop("term_criteria", "relative")
         self.ts = 0  # ts is just a timer used to print the execution time of some of the steps
@@ -91,6 +102,10 @@ class FDPDEInpainter(ABC):
             raise ValueError("term_thres must be larger than zero")
         if self.max_iters <= 0:
             raise ValueError("max_iters must be larger than zero")
+        if self.use_direct_solver and self.direct_solver not in ("cg", "minres"):
+            raise ValueError("direct_solver must be 'cg' or 'minres'")
+        if self.cg_term_thres <= 0:
+            raise ValueError("cg_term_thres must be larger than zero")
         if self.relaxation != 0.0 and (self.relaxation < 1.0 or self.relaxation > 2.0):
             raise ValueError(
                 "relaxation must be a number between 1 and 2 (0 to deactivate)"
@@ -142,6 +157,9 @@ class FDPDEInpainter(ABC):
             "mgs_min_res": self.mgs_min_res,
             "init_with": self.init_with,
             "convolver": self.convolver_type,
+            "use_direct_solver": self.use_direct_solver,
+            "direct_solver": self.direct_solver,
+            "cg_term_thres": self.cg_term_thres,
         }
 
         return config
@@ -282,17 +300,21 @@ class FDPDEInpainter(ABC):
         self.print_end()
         self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels - 1))
         original_term_thres = self.term_thres
+        original_max_iters = self.max_iters
         self.term_thres = original_term_thres * 2 ** (num_levels)
+        self.max_iters = max(1, original_max_iters // 2 ** (num_levels))
         inpainted_lower_scale = self.inpaint_grid(
             init_lower_scale, mask_pyramid[num_levels - 1] > 0
         )
         self.print_end()
         if num_levels == 1:
+            self.max_iters = original_max_iters
             return inpainted_lower_scale
         for level in range(num_levels - 2, -1, -1):
             self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(level))
 
             self.term_thres = original_term_thres * 2**level
+            self.max_iters = max(1, original_max_iters // 2**level)
 
             image = image_pyramid[level]
             mask = mask_pyramid[level]
@@ -327,9 +349,89 @@ class FDPDEInpainter(ABC):
             if level > 0:
                 inpainted_lower_scale = inpainted
 
+        self.term_thres = original_term_thres
+        self.max_iters = original_max_iters
         return inpainted
 
     def inpaint_grid(self, image, mask):
+        # Dispatcher: routes to sparse solver or iterative solver depending on config.
+        if self.use_direct_solver:
+            return self.inpaint_grid_sparse(image, mask)
+        return self._inpaint_grid_iterative(image, mask)
+
+    def inpaint_grid_sparse(self, image, mask):
+        """Solve the inpainting PDE as a sparse linear system.
+
+        Works for any *linear* step_fun (CCST, Sobolev, TV linearised, ...).
+        For non-linear PDEs (AMLE) the result will be approximate; use Picard
+        iteration (repeated calls with an updated image) to reach convergence.
+
+        Uses a matrix-free LinearOperator so step_fun is never changed.
+        The system built is:  A_uu @ x = -step_fun(f_zero)[unknowns]
+        where f_zero has the unknown pixels set to zero and known pixels at
+        their original values.
+        """
+        if not self.supports_direct_solver:
+            raise NotImplementedError(
+                f"{type(self).__name__} has a non-linear step_fun and does not "
+                "support use_direct_solver. Use the iterative solver instead."
+            )
+        mask = mask.astype(bool)
+        mask_inv = ~mask
+        unknown_flat = np.flatnonzero(mask_inv)
+        n = len(unknown_flat)
+
+        if n == 0:
+            return image.copy()
+
+        if self.convolver_type.startswith("masked"):
+            mask_inp = (
+                cv2.dilate(mask_inv.astype("uint8"), np.ones((3, 3))) == 1
+            )
+        else:
+            mask_inp = None
+
+        # f_zero: known pixels keep their values, unknowns set to 0
+        f_zero = image.copy()
+        f_zero.ravel()[unknown_flat] = 0.0
+
+        # Evaluate step_fun once at f_zero to get the constant term
+        sf_zero = self.step_fun(f_zero, mask_inp).ravel().copy()
+        rhs = -sf_zero[unknown_flat]
+
+        # Linear operator: x  ->  A_uu @ x
+        # = step_fun(f_with_x)[unknowns] - step_fun(f_zero)[unknowns]
+        f_tmp = f_zero.copy()
+
+        def matvec(x):
+            f_tmp.ravel()[unknown_flat] = x
+            sf = self.step_fun(f_tmp, mask_inp).ravel()
+            return sf[unknown_flat] - sf_zero[unknown_flat]
+
+        A = LinearOperator((n, n), matvec=matvec, dtype=np.float64)
+
+        # Initial guess: already-initialised values in the image
+        x0 = image.ravel()[unknown_flat].astype(np.float64)
+
+        solver = cg if self.direct_solver == "cg" else minres
+        self.print_msg(
+            f"  Sparse solver: {self.direct_solver}, unknowns: {n}, "
+            f"rtol: {self.cg_term_thres}"
+        )
+        x, info = solver(A, rhs, x0=x0, rtol=self.cg_term_thres,
+                         maxiter=self.max_iters)
+
+        if info > 0:
+            print(
+                f"[WARNING] Sparse solver ({self.direct_solver}) did not "
+                f"converge after {info} iterations"
+            )
+
+        result = image.copy()
+        result.ravel()[unknown_flat] = x
+        return result
+
+    def _inpaint_grid_iterative(self, image, mask):
         # Actual inpainting function on a single-channel, single-scale image
         #
         # Input:
@@ -358,6 +460,9 @@ class FDPDEInpainter(ABC):
 
         self.set_term_criteria(f)
 
+        # Pre-allocate a reusable buffer for term_check to avoid per-call allocation
+        diff_buf = np.empty_like(f)
+
         # Iterate
         diff = 100000
         # last_diff = 0
@@ -375,7 +480,7 @@ class FDPDEInpainter(ABC):
             # Compute the difference with the previous step
             # This is a costly operation, do it every now and then:
             if i % self.term_check_iters == 0:
-                terminate, diff = self.term_check(f, fnew)
+                terminate, diff = self.term_check(f, fnew, diff_buf)
 
             # Update the function
             f = fnew
@@ -435,16 +540,17 @@ class FDPDEInpainter(ABC):
 
         return f
 
-    def term_check(self, f, fnew):
+    def term_check(self, f, fnew, buf=None):
+        if buf is None:
+            buf = np.empty_like(f)
+        np.subtract(fnew, f, out=buf)
         if self.term_criteria_int == 0:
             # Relative change
-            # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
-            diff = self.fast_norm(fnew.flatten() - f.flatten()) / self.fast_norm(
-                fnew.flatten()
-            )
+            diff = self.fast_norm(buf.ravel()) / self.fast_norm(fnew.ravel())
         elif self.term_criteria_int == 1 or self.term_criteria_int == 2:
             # Absolute change
-            diff = np.max(np.abs(fnew.flatten() - f.flatten()))
+            np.abs(buf, out=buf)
+            diff = buf.max()
         else:
             raise RuntimeError("Invalid termination criteria!")
         terminate = diff < self.term_thres

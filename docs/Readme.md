@@ -12,3 +12,8 @@ Then, compile using the Sphinx-generated makefile that you can find in the folde
 make html
 ```
 
+To see the results and changes in the docs live:
+
+```
+sphinx-autobuild source/ build/
+```

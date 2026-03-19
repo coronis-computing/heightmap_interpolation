@@ -52,7 +52,7 @@ def inpaint(param):
         num_pixels_to_inpaint = np.count_nonzero(mask_int)
         inpaint_percent = (num_pixels_to_inpaint / total_pixels) * 100
         condp.print(
-            "Pixels to inpaint represent a {:.2f}% of the image ({:d}/{:d})".format(
+            "Pixels to inpaint represent {:.2f}% of the image ({:d}/{:d})".format(
                 inpaint_percent, num_pixels_to_inpaint, total_pixels
             )
         )

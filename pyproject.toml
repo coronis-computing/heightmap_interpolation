@@ -26,12 +26,10 @@ dependencies = [
     'fiona',
     'geopy>=2.2.0',
     'geopandas>=0.9.0',
-    'opencv-python-headless>=4.5.3.56',
-    'opencv-contrib-python-headless>=4.5.3.56',
+    'opencv-python-headless>=4.5.3.56',    
     'numba>=0.54.1',
     'psutil>=5.8.0',
-    'taichi',        
-    'exemplar-based-inpainting',    
+    'taichi',            
     'py_ams_point_interpolant'
 ]
 
@@ -42,9 +40,12 @@ Homepage = "https://github.com/coronis-computing/heightmap_interpolation/"
 docs = [        
     'sphinx',
     'sphinx-rtd-theme',
+    'sphinx-autobuild'
 ]
 experimental = [
-    'torch'
+    'opencv-contrib-python-headless>=4.5.3.56', # Shiftmap
+    'exemplar-based-inpainting', # EBI
+    'torch' # MLP
 ]
 dev = [
     'ruff'
