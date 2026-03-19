@@ -15,6 +15,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
+import math
+from timeit import default_timer as timer
+
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,6 +38,16 @@ from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
     TaichiFDPDEInpainter,
 )
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
+from heightmap_interpolation.interpolants.ams_interpolant import AMSInterpolant
+from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
+from heightmap_interpolation.interpolants.linear_interpolant import LinearInterpolant
+from heightmap_interpolation.interpolants.nearest_neighbor_interpolant import (
+    NearestNeighborInterpolant,
+)
+from heightmap_interpolation.interpolants.quad_tree_pu_rbf_interpolant import (
+    QuadTreePURBFInterpolant,
+)
+from heightmap_interpolation.interpolants.rbf_interpolant import RBFInterpolant
 
 # Common functions to use in the apps main functions
 
@@ -83,16 +96,32 @@ def show_interpolation_results(
     y_var_name="y",
     colormap="terrain",
     highlight_interpolated_area=False,
+    scatter_xs=None,
+    scatter_ys=None,
+    scatter_values=None,
 ):
+    """Show interpolation results side by side.
+
+    If scatter_xs/ys/values are provided, the left panel shows the scattered
+    input points instead of the elevation grid (useful for XYZ input data).
+    """
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 6), layout="constrained")
-    images = [elevation, elevation_int]
-    titles = ["Original", "Interpolated"]
     extent = [xs_mat.min(), xs_mat.max(), ys_mat.min(), ys_mat.max()]
-    vmin = np.nanmin(elevation)
-    vmax = np.nanmax(elevation)
-    for ax, image, title in zip(axes, images, titles):
-        im = ax.imshow(
-            image,
+    vmin = np.nanmin(elevation_int)
+    vmax = np.nanmax(elevation_int)
+
+    # Left panel: scattered input points or original grid
+    if scatter_xs is not None:
+        sc = axes[0].scatter(
+            scatter_xs, scatter_ys, c=scatter_values, s=5,
+            cmap=colormap, vmin=vmin, vmax=vmax
+        )
+        axes[0].set_xlim(extent[0], extent[1])
+        axes[0].set_ylim(extent[2], extent[3])
+        im = sc
+    else:
+        im = axes[0].imshow(
+            elevation,
             origin="lower",
             cmap=colormap,
             vmin=vmin,
@@ -100,27 +129,342 @@ def show_interpolation_results(
             extent=extent,
             aspect="auto",
         )
-        ax.set_title(title)
-        ax.set_xlabel(x_var_name)
-        ax.set_ylabel(y_var_name)
-    if highlight_interpolated_area:
-        mask_overlay = np.where(mask_int == 1, 1.0, np.nan)
-        axes[0].imshow(
-            mask_overlay,
-            origin="lower",
-            cmap="autumn",
-            alpha=0.4,
-            extent=extent,
-            aspect="auto",
-        )
-        axes[0].legend(
-            handles=[
-                mpatches.Patch(color="red", alpha=0.4, label="Area to interpolate")
-            ],
-            loc="lower right",
-        )
+        if highlight_interpolated_area:
+            mask_overlay = np.where(mask_int == 1, 1.0, np.nan)
+            axes[0].imshow(
+                mask_overlay,
+                origin="lower",
+                cmap="autumn",
+                alpha=0.4,
+                extent=extent,
+                aspect="auto",
+            )
+            axes[0].legend(
+                handles=[
+                    mpatches.Patch(
+                        color="red", alpha=0.4, label="Area to interpolate"
+                    )
+                ],
+                loc="lower right",
+            )
+    axes[0].set_title("Original")
+    axes[0].set_xlabel(x_var_name)
+    axes[0].set_ylabel(y_var_name)
+
+    # Right panel: interpolated grid
+    axes[1].imshow(
+        elevation_int,
+        origin="lower",
+        cmap=colormap,
+        vmin=vmin,
+        vmax=vmax,
+        extent=extent,
+        aspect="auto",
+    )
+    axes[1].set_title("Interpolated")
+    axes[1].set_xlabel(x_var_name)
+    axes[1].set_ylabel(y_var_name)
+
     fig.colorbar(im, ax=axes.tolist(), shrink=0.6, label="Elevation (m)")
     plt.show(block=True)
+
+
+def add_common_args(parser, interpolation_flag_var_default=None):
+    """Adds CLI arguments shared by all interpolation apps to the given ArgumentParser."""
+    parser.add_argument(
+        "-o",
+        "--output_file",
+        dest="output_file",
+        action="store",
+        type=str,
+        help="Output NetCDF file with interpolated values",
+    )
+    parser.add_argument(
+        "--areas",
+        action="store",
+        type=str,
+        default=None,
+        help="KML file containing the areas that will be interpolated.",
+    )
+    parser.add_argument(
+        "--elevation_var",
+        action="store",
+        type=str,
+        default="elevation",
+        help="Name of the variable storing the elevation grid.",
+    )
+    parser.add_argument(
+        "--x_var",
+        action="store",
+        type=str,
+        default="lon",
+        help="Name of the variable storing the columns' coordinates of the elevation grid.",
+    )
+    parser.add_argument(
+        "--y_var",
+        action="store",
+        type=str,
+        default="lat",
+        help="Name of the variable storing the rows' coordinates of the elevation grid.",
+    )
+    parser.add_argument(
+        "--x_dim",
+        action="store",
+        type=str,
+        default="",
+        help="Name of the dimension for the columns' coordinates."
+        " Defaults to x_var if not set.",
+    )
+    parser.add_argument(
+        "--y_dim",
+        action="store",
+        type=str,
+        default="",
+        help="Name of the dimension for the rows' coordinates."
+        " Defaults to y_var if not set.",
+    )
+    parser.add_argument(
+        "--interpolation_flag_var",
+        action="store",
+        type=str,
+        default=interpolation_flag_var_default,
+        help="Name of the variable storing the per-cell interpolation flag.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        default=False,
+        help="Verbosity flag, activate it to have feedback of the current"
+        " steps of the process in the command line",
+    )
+    parser.add_argument(
+        "-s",
+        "--show",
+        action="store_true",
+        dest="show",
+        default=False,
+        help="Show interpolation problem and results on screen",
+    )
+    parser.add_argument(
+        "--colormap",
+        action="store",
+        type=str,
+        dest="colormap",
+        default="terrain",
+        help="Matplotlib colormap used when showing results (default: terrain)",
+    )
+    parser.add_argument(
+        "--highlight_interpolated_area",
+        action="store_true",
+        dest="highlight_interpolated_area",
+        default=False,
+        help="Highlight the area to interpolate in the results plot",
+    )
+    return parser
+
+
+def run_scattered_interpolation(
+    params, xs_ref, ys_ref, elevation_ref, xs_int, ys_int, condp
+):
+    """Creates a scattered interpolant and applies it to the query points.
+
+    Returns zi, the interpolated values at (xs_int, ys_int).
+    """
+    method = params.subparser_name.lower()
+
+    # Create the interpolant
+    endl = "\n" if method == "purbf" else ""
+    if params.verbose:
+        condp.print("- Creating the interpolant...", end=endl)
+        ts = timer()
+    if method == "nearest":
+        interpolant = NearestNeighborInterpolant(
+            xs_ref, ys_ref, elevation_ref, params.rescale
+        )
+    elif method == "linear":
+        interpolant = LinearInterpolant(
+            xs_ref, ys_ref, elevation_ref, params.fill_value, params.rescale
+        )
+    elif method == "cubic":
+        interpolant = CubicInterpolant(
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            params.fill_value,
+            params.tolerance,
+            params.max_iters,
+            params.rescale,
+        )
+    elif method == "rbf":
+        if len(ys_ref) > 10000:
+            print(
+                "\n!!!WARNING!!! You are trying to build a RBF interpolant from a large"
+                " number of data points, and this may require large computational cost"
+                " and memory consumption.\n"
+                "Please consider using the PURBF interpolant instead!"
+            )
+        interpolant = RBFInterpolant(
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            rbf_type=params.rbf_type,
+            distance_type=params.rbf_distance_type,
+            epsilon=params.rbf_epsilon,
+            regularization=params.rbf_regularization,
+            polynomial_degree=params.rbf_polynomial_degree,
+        )
+    elif method == "purbf":
+        w = np.max(xs_int) - np.min(xs_int)
+        h = np.max(ys_int) - np.min(ys_int)
+        wh = max(w, h)
+        if wh == 0:
+            # Special case: single cell to interpolate
+            wh = xs_int[0] * 1e-6 if xs_int[0] != 0 else 1e-6
+        domain = [np.min(xs_int), np.min(ys_int), wh]
+        interpolant = QuadTreePURBFInterpolant(
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            domain=domain,
+            min_points_in_cell=params.pu_min_point_in_cell,
+            overlap=params.pu_overlap,
+            overlap_increment=params.pu_overlap_increment,
+            min_cell_size_percent=params.pu_min_cell_size_percent,
+            rbf_type=params.rbf_type,
+            distance_type=params.rbf_distance_type,
+            epsilon=params.rbf_epsilon,
+            regularization=params.rbf_regularization,
+            polynomial_degree=params.rbf_polynomial_degree,
+        )
+    elif method == "mlp":
+        from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
+        interpolant = MLPInterpolant(
+            xs_ref, ys_ref, elevation_ref
+        )  # TODO: set parameters from command line!
+    elif method == "ams":
+        suggested_scale = AMSInterpolant.preferred_scale_factor(
+            xs_ref, ys_ref, xs_int, ys_int
+        )
+        if suggested_scale > params.scale:
+            print(
+                f"\n[WARNING] The requested scale parameter is too small to include"
+                f" some of the points to interpolate within the query domain."
+                f" Changing it to {suggested_scale}"
+            )
+            ams_scale = suggested_scale
+        else:
+            ams_scale = params.scale
+        interpolant = AMSInterpolant(
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            depth=params.depth,
+            degree=params.degree,
+            solve_depth=params.solve_depth,
+            full_depth=params.full_depth,
+            base_depth=params.base_depth,
+            boundary_type=params.boundary_type,
+            iters=params.iters,
+            base_v_cycles=params.base_v_cycles,
+            max_memory_gb=params.max_memory_gb,
+            parallel_type=params.parallel_type,
+            parallel_schedule=params.parallel_schedule,
+            parallel_thread_chunk_size=params.parallel_thread_chunk_size,
+            value_weight=params.value_weight,
+            gradient_weight=params.gradient_weight,
+            scale=ams_scale,
+            width=params.width,
+            cg_accuracy=params.cg_accuracy,
+            iso=params.iso,
+            laplacian_weight=params.laplacian_weight,
+            bi_laplacian_weight=params.bi_laplacian_weight,
+            show_performance=params.show_performance,
+            show_residual=params.show_residual,
+            exact_interpolation=params.exact_interpolation,
+            verbose=params.ams_verbose,
+            transform_file=params.transform_file,
+        )
+    else:
+        raise ValueError("Unknown interpolant type: {}".format(params.subparser_name))
+    if params.verbose:
+        condp.print(" done, {:.2f} sec.".format(timer() - ts))
+
+    # Apply the interpolant at the query points
+    if params.verbose:
+        condp.print("- Applying the interpolant at the query points...", end=endl)
+        ts = timer()
+    if method not in ("rbf", "purbf"):
+        zi = interpolant(xs_int, ys_int)
+    else:
+        # Apply in blocks to avoid large memory consumption
+        query_block_size = params.query_block_size
+        num_int = len(xs_int)
+        zi = np.zeros(xs_int.shape)
+        num_blocks = math.ceil(num_int / query_block_size)
+        block_start = 0
+        block_end = min(num_int, query_block_size)
+        for b in range(num_blocks):
+            condp.print("    - Querying block {}/{}".format(b + 1, num_blocks))
+            zi[block_start:block_end] = interpolant(
+                xs_int[block_start:block_end], ys_int[block_start:block_end]
+            )
+            block_start += query_block_size
+            block_end = min(block_end + query_block_size, num_int)
+    if params.verbose:
+        condp.print(" done, {:.2f} sec.".format(timer() - ts))
+
+    interpolant.cleanup()
+    return zi
+
+
+def run_gridded_inpainting(
+    params, elevation_src, elevation_int, mask_int,
+    cur_work_area, area_idx, num_areas, condp
+):
+    """Runs the gridded inpainting method for a single work area.
+
+    Modifies elevation_int in-place.
+    """
+    rows = np.any(cur_work_area, axis=1)
+    cols = np.any(cur_work_area, axis=0)
+    rmin, rmax = np.where(rows)[0][[0, -1]]
+    cmin, cmax = np.where(cols)[0][[0, -1]]
+
+    # Extract this region; inpainting mask is the inverse of mask_int by convention
+    cur_inpaint_mask = np.copy(~mask_int[rmin:rmax + 1, cmin:cmax + 1])
+    cur_elevation = np.copy(elevation_src[rmin:rmax + 1, cmin:cmax + 1])
+    # Exclude cells outside the marked area from inpainting
+    cur_inpaint_mask = np.logical_or(
+        cur_inpaint_mask, ~cur_work_area[rmin:rmax + 1, cmin:cmax + 1]
+    )
+    # Initializer / boundary condition for cells with unknown data
+    cur_elevation[np.isnan(cur_elevation)] = 0
+
+    if params.verbose and params.areas:
+        condp.print("- Interpolating area {:d}/{:d}:".format(area_idx + 1, num_areas))
+        condp.print(
+            "    - Number of reference cells = {:d}".format(
+                np.count_nonzero(cur_inpaint_mask)
+            )
+        )
+        condp.print(
+            "    - Number of cells to interpolate = {:d}".format(
+                np.count_nonzero(~cur_inpaint_mask)
+            )
+        )
+
+    inpainter = create_inpainter_from_params(params)
+    if params.verbose:
+        ts = timer()
+    cur_elevation_int = inpainter.inpaint(cur_elevation, cur_inpaint_mask)
+    if params.verbose:
+        condp.print("- Inpainting took a total of {:.2f} sec.".format(timer() - ts))
+
+    # Paste results back (slice reference avoids a copy)
+    elevation_slice = elevation_int[rmin:rmax + 1, cmin:cmax + 1]
+    elevation_slice[~cur_inpaint_mask] = cur_elevation_int[~cur_inpaint_mask]
 
 
 def add_common_fd_pde_inpainters_args(parser):
