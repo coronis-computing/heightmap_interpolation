@@ -308,10 +308,16 @@ Disadvantages
 
 * While compared to the pure RBF, reduction in computational requirements is huge, it may not be sufficient for processing large datasets (i.e., it will still be slower to compute than other options in this package).
 
-Adaptive Multi-grid Solver
---------------------------
+Adaptive Multigrid Solver
+-------------------------
 
-The Adaptive Multi-grid Solver (AMS) method implements the `PointInterpolant` tool from the `AMS (a.k.a. PoissonRecon) project <https://github.com/mkazhdan/PoissonRecon>`_, via our `Python interface <https://github.com/coronis-computing/py_ams_point_interpolant>`_.
+.. figure:: images/ams.png
+    :width: 500
+    :align: center
+
+    Example dataset interpolated using the Adaptive Multigrid Solver interpolant (*ams* option in ``interpolate_netcdf4.py``).
+
+The Adaptive Multigrid Solver (AMS) method implements the `PointInterpolant` tool from the `AMS (a.k.a. PoissonRecon) project <https://github.com/mkazhdan/PoissonRecon>`_, via our `Python interface <https://github.com/coronis-computing/py_ams_point_interpolant>`_.
 
 This method solves for coefficients by minimizing an energy of the form :math:`E = D + S`, where the *data fitting* term :math:`D` tries to match values at sample points and the *smoothness regularization* :math:`S` penalizes roughness via Laplacian and bi-Laplacian terms. In this sense, the smoothness term resembles that in the CCST method below, allowing to also set relative weights to both **Laplacian** and **Bi-Laplacian** terms similarly to what the **tension** parameter is doing in :ref:`CCST <ccst_inpainter>`.
 
