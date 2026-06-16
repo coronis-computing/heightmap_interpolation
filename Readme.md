@@ -29,6 +29,21 @@ pip install --upgrade pip
 pip install .
 ```
 
+### Optional (experimental) methods
+
+Some interpolation methods rely on heavier, optional dependencies and are only
+available when these are installed:
+
+```
+pip install heightmap_interpolation[experimental]
+```
+
+In particular, the `gmt_surface` method wraps GMT's `surface` gridder through
+[PyGMT](https://www.pygmt.org). Besides the `pygmt` Python package (pulled in by
+the `experimental` extra), it additionally requires the GMT binaries to be present
+on the system, e.g. via conda: `conda install -c conda-forge gmt pygmt`. The method
+only appears in the list of available methods when `pygmt` can be imported.
+
 ## Usage
 
 This package installs two tools for interpolating from the command line: 

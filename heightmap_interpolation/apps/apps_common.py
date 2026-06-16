@@ -72,10 +72,12 @@ EXPERIMENTAL_GRIDDED_METHODS = ["shiftmap", "ebi"]
 
 
 def get_available_scattered_methods():
+    methods = list(SCATTERED_METHODS)
     if experimental_features_available():
-        return SCATTERED_METHODS + EXPERIMENTAL_SCATTERED_METHODS
-    else:
-        return SCATTERED_METHODS
+        methods += EXPERIMENTAL_SCATTERED_METHODS
+    if pygmt_available():
+        methods += ["gmt_surface"]
+    return methods
 
 
 def get_available_gridded_methods():
@@ -98,15 +100,25 @@ def show_interpolation_results(
     scatter_xs=None,
     scatter_ys=None,
     scatter_values=None,
+    truncate_to_input_range=False,
 ):
     """Show interpolation results side by side.
 
     If scatter_xs/ys/values are provided, the left panel shows the scattered
     input points instead of the elevation grid (useful for XYZ input data).
+
+    If truncate_to_input_range is set, the colormap range is derived from the
+    input data (scatter_values when provided, otherwise the elevation grid)
+    instead of the interpolated result, which visually clamps overshoots.
     """
     extent = [xs_mat.min(), xs_mat.max(), ys_mat.min(), ys_mat.max()]
-    vmin = np.nanmin(elevation_int)
-    vmax = np.nanmax(elevation_int)
+    if truncate_to_input_range:
+        input_data = scatter_values if scatter_values is not None else elevation
+        vmin = np.nanmin(input_data)
+        vmax = np.nanmax(input_data)
+    else:
+        vmin = np.nanmin(elevation_int)
+        vmax = np.nanmax(elevation_int)
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 6), layout="compressed")
 
@@ -265,6 +277,15 @@ def add_common_args(parser, interpolation_flag_var_default=None):
         default=False,
         help="Highlight the area to interpolate in the results plot",
     )
+    parser.add_argument(
+        "--truncate_to_input_range",
+        action="store_true",
+        dest="truncate_to_input_range",
+        default=False,
+        help="Clip the interpolated values to the [min, max] range of the input"
+        " data, both in the results plot and in the written output file. Useful"
+        " to remove overshoots produced by some interpolation methods.",
+    )
     return parser
 
 
@@ -389,6 +410,40 @@ def run_scattered_interpolation(
             exact_interpolation=params.exact_interpolation,
             verbose=params.ams_verbose,
             transform_file=params.transform_file,
+        )
+    elif method == "gmt_surface":
+        from heightmap_interpolation.interpolants.gmt_surface_interpolant import (
+            GMTSurfaceInterpolant,
+        )
+
+        # The grid region must cover both the reference and the query points so that the
+        # gridded result can be sampled everywhere it is needed.
+        region = [
+            float(min(np.min(xs_int), np.min(xs_ref))),
+            float(max(np.max(xs_int), np.max(xs_ref))),
+            float(min(np.min(ys_int), np.min(ys_ref))),
+            float(max(np.max(ys_int), np.max(ys_ref))),
+        ]
+        # The XYZ app provides --cell_size; the netCDF4 app does not, so derive the grid
+        # spacing from the coordinates (both ref and query points lie on the same grid).
+        cell_size = getattr(params, "cell_size", None)
+        if cell_size is not None:
+            spacing = cell_size
+        else:
+            dx = _grid_spacing(np.concatenate((xs_ref.ravel(), xs_int.ravel())))
+            dy = _grid_spacing(np.concatenate((ys_ref.ravel(), ys_int.ravel())))
+            spacing = "{}/{}".format(dx, dy)
+        interpolant = GMTSurfaceInterpolant(
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            spacing=spacing,
+            region=region,
+            tension=params.gmt_tension,
+            convergence_limit=params.gmt_convergence_limit,
+            max_radius=params.gmt_max_radius,
+            max_iterations=params.gmt_max_iterations,
+            verbose=params.verbose,
         )
     else:
         raise ValueError("Unknown interpolant type: {}".format(params.subparser_name))
@@ -928,6 +983,38 @@ def add_subparsers(subparsers):
         "--transform_file", type=str, default="", help="Transform file (default: none)"
     )
 
+    # Parser for the "gmt_surface" method
+    parser_gmt = subparsers.add_parser(
+        "gmt_surface",
+        help="GMT continuous-curvature spline-in-tension gridder (requires pygmt/GMT)",
+    )
+    parser_gmt.add_argument(
+        "--gmt_tension",
+        type=float,
+        default=0.0,
+        help="Tension factor in [0..1] (GMT -T). 0 = minimum curvature; higher values"
+        " reduce overshoot near steep gradients (default: 0.0)",
+    )
+    parser_gmt.add_argument(
+        "--gmt_convergence_limit",
+        type=float,
+        default=0.0,
+        help="Convergence limit (GMT -C). 0 = GMT default (default: 0.0)",
+    )
+    parser_gmt.add_argument(
+        "--gmt_max_radius",
+        type=str,
+        default=None,
+        help="Search radius for nearest-data initialization (GMT -M), e.g. '5c'"
+        " (default: GMT default)",
+    )
+    parser_gmt.add_argument(
+        "--gmt_max_iterations",
+        type=int,
+        default=None,
+        help="Maximum number of iterations (GMT -N). None = GMT default (default: None)",
+    )
+
     # Parser for the "harmonic" method
     parser_harmonic = subparsers.add_parser("harmonic", help="Harmonic inpainter")
     parser_harmonic.add_argument(
@@ -1122,3 +1209,25 @@ def experimental_features_available():
         return True
     except ImportError:
         return False
+
+
+def pygmt_available():
+    try:
+        import pygmt  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _grid_spacing(coords):
+    """Estimates the spacing of a regular grid from a set of (possibly partial) coordinates.
+
+    Returns the minimum positive difference between consecutive unique coordinate values.
+    """
+    unique = np.unique(coords)
+    if unique.size < 2:
+        raise ValueError(
+            "Cannot derive a grid spacing from fewer than 2 distinct coordinates."
+        )
+    return float(np.min(np.diff(unique)))

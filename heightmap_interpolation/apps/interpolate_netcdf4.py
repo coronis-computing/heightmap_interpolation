@@ -144,6 +144,13 @@ def interpolate(params):
                 cur_work_area, i, work_areas.shape[2], condp
             )
 
+    # Clip the interpolated values to the input data range to remove overshoots
+    if params.truncate_to_input_range:
+        np.clip(
+            elevation_int, np.nanmin(elevation), np.nanmax(elevation),
+            out=elevation_int,
+        )
+
     # Write the results
     if params.output_file:
         condp.print("- Writing the results to disk")
@@ -172,6 +179,7 @@ def interpolate(params):
             y_var_name=params.y_var,
             colormap=params.colormap,
             highlight_interpolated_area=params.highlight_interpolated_area,
+            truncate_to_input_range=params.truncate_to_input_range,
         )
 
 

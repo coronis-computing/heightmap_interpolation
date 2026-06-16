@@ -253,6 +253,13 @@ def rasterize(params):
                 condp,
             )
 
+    # Clip the interpolated values to the input data range to remove overshoots
+    if params.truncate_to_input_range:
+        np.clip(
+            elevation_int, np.nanmin(elevation_ref), np.nanmax(elevation_ref),
+            out=elevation_int,
+        )
+
     # Write the results
     if params.output_file:
         condp.print("- Writing the results to disk")
@@ -281,6 +288,7 @@ def rasterize(params):
             scatter_xs=xs_ref,
             scatter_ys=ys_ref,
             scatter_values=elevation_ref,
+            truncate_to_input_range=params.truncate_to_input_range,
         )
 
 

@@ -2,6 +2,11 @@
 
 Starting from v1.1.0, all version-specific notable changes to this project will be documented in this file.
 
+## (version number pending)
+
+* Added the possibility to call GMT surface (experimental).
+* Added `--truncate_to_input_range` option to truncate interpolation results to input min/max.
+
 ## v1.1.0
 
 * Some signature changes in the CLI tools. Now the interpolation scripts (`interpolate_netcdf4` and `interpolate_xyz`) do not assume any projection for the input, and the names of the variables containing the x/y/elevation values can be defined from the command line with `--x_var`, `--y_var` and `--elevation_var`. This allows using the interpolation on data using other projections, such as UTM. The defaults follow the previous assumptions (i.e., `--x_var lon --y_var lat --elevation_var elevation`), so the scripts should work as before if none of these arguments are passed.

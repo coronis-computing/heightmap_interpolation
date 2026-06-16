@@ -45,7 +45,8 @@ docs = [
 experimental = [
     'opencv-contrib-python-headless>=4.5.3.56', # Shiftmap
     'exemplar-based-inpainting', # EBI
-    'torch' # MLP
+    'torch', # MLP
+    'pygmt' # GMT surface gridder (also requires the GMT binaries on the system)
 ]
 dev = [
     'ruff'
