@@ -1010,7 +1010,7 @@ def add_subparsers(subparsers):
     parser_ams.add_argument(
         "--depth",
         type=int,
-        default=8,
+        default=10,
         help="This integer is the maximum depth of the tree that will be used for surface reconstruction. Running at depth d corresponds to solving on a grid whose resolution is no larger than 2^d x 2^d x ... Note that since the reconstructor adapts the octree to the sampling density, the specified reconstruction depth is only an upper bound. (default: 8)",
     )
     parser_ams.add_argument(

@@ -10,6 +10,7 @@ Starting from v1.1.0, all version-specific notable changes to this project will 
 * Added `--ams_estimate_gradients` option to the `ams` method: estimates gradients at the input points (via a local plane fit, keeping only the reliable ones) and fits them in addition to the values. Tunable with `--ams_gradient_neighbors`, `--ams_gradient_max_distance` and `--ams_gradient_min_planarity`.
 * Sped up the `nearest` initializer used by the FD-PDE inpainters (e.g. `ccst`): it now uses an exact Euclidean distance transform instead of `scipy.interpolate.griddata`, which is orders of magnitude faster on large grids with large areas to fill (~60x in our tests) while producing the same result.
 * Changed the defaults for the FD-PDE inpainters (e.g. `ccst`): `--use_direct_solver` is now enabled by default (use `--no-use_direct_solver` to disable it), `--mgs_levels` defaults to `5` (was `1`), and `--cg_term_thres` defaults to `1e-4` (was `1e-6`).
+* Changed default `--depth` of AMS to 10.
 
 ## v1.1.0
 
