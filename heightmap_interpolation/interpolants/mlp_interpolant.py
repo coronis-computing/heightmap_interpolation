@@ -26,7 +26,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-matplotlib.use("TkAgg")
 from heightmap_interpolation.interpolants.interpolant import Interpolant
 
 
@@ -208,6 +207,9 @@ class MLPScatteredDataInterpolatorTrainer:
 
     def prepare_loss_plots(self):
         """Prepare loss plots. Called when show_loss_plots=True."""
+        # Select an interactive backend lazily, so that merely importing this
+        # module does not require a GUI backend (e.g. on headless machines).
+        matplotlib.use("TkAgg")
         plt.ion()
         fig, self.axes = plt.subplots(1, 2, figsize=(14, 4))
         fig.suptitle("Training Progress (Live)", fontsize=14)
@@ -253,6 +255,9 @@ class MLPScatteredDataInterpolatorTrainer:
             )
 
         self.model.train()
+
+        if verbose:
+            print(f"Starting training for {epochs} epochs...")
 
         n_samples = len(X_train)
         for epoch in range(epochs):
@@ -380,6 +385,8 @@ class MLPInterpolant(Interpolant):
         use_density_weighting=True,
         epochs=10000,
         device=None,
+        verbose=True,
+        show_loss_plots=False,
     ):
         if not _HAS_EXPERIMENTAL:
             raise ImportError(
@@ -420,7 +427,8 @@ class MLPInterpolant(Interpolant):
             np.column_stack((x, y)),
             np.expand_dims(z, 1),
             epochs=epochs,
-            show_loss_plots=True,
+            verbose=verbose,
+            show_loss_plots=show_loss_plots,
             use_density_weighting=use_density_weighting,
         )
 

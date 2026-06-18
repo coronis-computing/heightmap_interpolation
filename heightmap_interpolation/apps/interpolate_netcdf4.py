@@ -141,6 +141,7 @@ def interpolate(params):
         if params.subparser_name.lower() in gridded_methods:
             run_gridded_inpainting(
                 params, elevation, elevation_int, mask_int,
+                xs_mat, ys_mat,
                 cur_work_area, i, work_areas.shape[2], condp
             )
 

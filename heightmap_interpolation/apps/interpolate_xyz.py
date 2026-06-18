@@ -247,6 +247,8 @@ def rasterize(params):
                 elevation_int,
                 elevation_int,
                 mask_int,
+                xs_mat,
+                ys_mat,
                 cur_work_area,
                 i,
                 work_areas.shape[2],

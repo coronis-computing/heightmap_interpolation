@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import interpolate
+from scipy.ndimage import distance_transform_edt
 
 
 class Initializer:
@@ -17,15 +18,19 @@ class Initializer:
             image[~mask] = 0
         elif self.init_with.lower() == "mean":
             image[~mask] = np.mean(image[mask])
-        elif (
-            self.init_with.lower() == "nearest"
-            or self.init_with.lower() == "linear"
-            or self.init_with.lower() == "cubic"
-        ):
-            if self.init_with.lower() == "nearest":
-                fill_value = 0  # Not important, will be disregarded...
-            else:
-                fill_value = np.mean(image[mask])  # Fill value equal to the mean
+        elif self.init_with.lower() == "nearest":
+            # Nearest-neighbor fill on a regular grid does not need a KDTree:
+            # the exact Euclidean distance transform of the unknown cells gives,
+            # for every cell, the index of the nearest known cell. This is a
+            # linear-time C routine, orders of magnitude faster than griddata
+            # on large grids with large gaps. It reads only the mask, so NaN/0
+            # values in the gaps are irrelevant.
+            inds = distance_transform_edt(
+                ~mask, return_distances=False, return_indices=True
+            )
+            image[~mask] = image[tuple(inds)][~mask]
+        elif self.init_with.lower() == "linear" or self.init_with.lower() == "cubic":
+            fill_value = np.mean(image[mask])  # Fill value equal to the mean
             # Grid
             x = np.arange(0, image.shape[1])
             y = np.arange(0, image.shape[0])

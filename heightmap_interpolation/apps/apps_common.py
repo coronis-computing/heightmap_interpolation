@@ -15,6 +15,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # Author: Ricard Campos (ricard.campos@coronis.es)
+import argparse
 import math
 from timeit import default_timer as timer
 
@@ -286,7 +287,30 @@ def add_common_args(parser, interpolation_flag_var_default=None):
         " data, both in the results plot and in the written output file. Useful"
         " to remove overshoots produced by some interpolation methods.",
     )
+    parser.add_argument(
+        "--max_distance_to_data",
+        action="store",
+        type=float,
+        dest="max_distance_to_data",
+        default=None,
+        help="If set, output cells whose nearest input data point is farther than"
+        " this distance (in the coordinate units of the grid, e.g. degrees for"
+        " lon/lat) are left as NaN/nodata instead of being interpolated. Off by"
+        " default.",
+    )
     return parser
+
+
+def _too_far_from_data(xs_query, ys_query, xs_ref, ys_ref, max_distance):
+    """Boolean array, True where the query point is farther than max_distance
+    (Euclidean, coordinate units) from the nearest reference point."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(np.column_stack((np.ravel(xs_ref), np.ravel(ys_ref))))
+    dists, _ = tree.query(
+        np.column_stack((np.ravel(xs_query), np.ravel(ys_query))), workers=-1
+    )
+    return dists > max_distance
 
 
 def run_scattered_interpolation(
@@ -366,8 +390,21 @@ def run_scattered_interpolation(
         from heightmap_interpolation.interpolants.mlp_interpolant import MLPInterpolant
 
         interpolant = MLPInterpolant(
-            xs_ref, ys_ref, elevation_ref
-        )  # TODO: set parameters from command line!
+            xs_ref,
+            ys_ref,
+            elevation_ref,
+            hidden_dims=params.hidden_dims,
+            use_fourier=params.use_fourier,
+            num_frequencies=params.num_frequencies,
+            fourier_scale=params.fourier_scale,
+            lr=params.lr,
+            smoothness_weight=params.smoothness_weight,
+            use_density_weighting=params.use_density_weighting,
+            epochs=params.epochs,
+            device=params.device,
+            verbose=params.verbose,
+            show_loss_plots=params.show_loss_plots,
+        )
     elif method == "ams":
         suggested_scale = AMSInterpolant.preferred_scale_factor(
             xs_ref, ys_ref, xs_int, ys_int
@@ -410,6 +447,10 @@ def run_scattered_interpolation(
             exact_interpolation=params.exact_interpolation,
             verbose=params.ams_verbose,
             transform_file=params.transform_file,
+            estimate_gradients=params.estimate_gradients,
+            gradient_neighbors=params.gradient_neighbors,
+            gradient_max_distance=params.gradient_max_distance,
+            gradient_min_planarity=params.gradient_min_planarity,
         )
     elif method == "gmt_surface":
         from heightmap_interpolation.interpolants.gmt_surface_interpolant import (
@@ -439,10 +480,10 @@ def run_scattered_interpolation(
             elevation_ref,
             spacing=spacing,
             region=region,
-            tension=params.gmt_tension,
-            convergence_limit=params.gmt_convergence_limit,
-            max_radius=params.gmt_max_radius,
-            max_iterations=params.gmt_max_iterations,
+            tension=params.tension,
+            convergence_limit=params.convergence_limit,
+            max_radius=params.max_radius,
+            max_iterations=params.max_iterations,
             verbose=params.verbose,
         )
     else:
@@ -450,29 +491,55 @@ def run_scattered_interpolation(
     if params.verbose:
         condp.print(" done, {:.2f} sec.".format(timer() - ts))
 
-    # Apply the interpolant at the query points
+    # Restrict the query points to those close enough to the input data: cells too
+    # far from any input point are left as nodata and never interpolated.
+    max_dist = getattr(params, "max_distance_to_data", None)
+    if max_dist is not None:
+        near = ~_too_far_from_data(xs_int, ys_int, xs_ref, ys_ref, max_dist)
+        xs_q = xs_int[near]
+        ys_q = ys_int[near]
+        if params.verbose:
+            condp.print(
+                "- Discarding {:d}/{:d} query cells farther than {} from the input"
+                " data".format(int(np.count_nonzero(~near)), len(xs_int), max_dist)
+            )
+    else:
+        xs_q = xs_int
+        ys_q = ys_int
+
+    # Apply the interpolant at the (kept) query points
     if params.verbose:
         condp.print("- Applying the interpolant at the query points...", end=endl)
         ts = timer()
-    if method not in ("rbf", "purbf"):
-        zi = interpolant(xs_int, ys_int)
+    if len(xs_q) == 0:
+        zq = np.zeros(xs_q.shape)
+    elif method not in ("rbf", "purbf"):
+        zq = interpolant(xs_q, ys_q)
     else:
         # Apply in blocks to avoid large memory consumption
         query_block_size = params.query_block_size
-        num_int = len(xs_int)
-        zi = np.zeros(xs_int.shape)
+        num_int = len(xs_q)
+        zq = np.zeros(xs_q.shape)
         num_blocks = math.ceil(num_int / query_block_size)
         block_start = 0
         block_end = min(num_int, query_block_size)
         for b in range(num_blocks):
             condp.print("    - Querying block {}/{}".format(b + 1, num_blocks))
-            zi[block_start:block_end] = interpolant(
-                xs_int[block_start:block_end], ys_int[block_start:block_end]
+            zq[block_start:block_end] = interpolant(
+                xs_q[block_start:block_end], ys_q[block_start:block_end]
             )
             block_start += query_block_size
             block_end = min(block_end + query_block_size, num_int)
     if params.verbose:
         condp.print(" done, {:.2f} sec.".format(timer() - ts))
+
+    # Scatter the results back into the full set of query points (discarded cells
+    # remain nodata)
+    if max_dist is not None:
+        zi = np.full(xs_int.shape, np.nan)
+        zi[near] = zq
+    else:
+        zi = zq
 
     interpolant.cleanup()
     return zi
@@ -483,6 +550,8 @@ def run_gridded_inpainting(
     elevation_src,
     elevation_int,
     mask_int,
+    xs_mat,
+    ys_mat,
     cur_work_area,
     area_idx,
     num_areas,
@@ -526,6 +595,29 @@ def run_gridded_inpainting(
     cur_elevation_int = inpainter.inpaint(cur_elevation, cur_inpaint_mask)
     if params.verbose:
         condp.print("- Inpainting took a total of {:.2f} sec.".format(timer() - ts))
+
+    # Leave inpainted cells too far from any known-data cell as nodata
+    if getattr(params, "max_distance_to_data", None) is not None:
+        xs_region = xs_mat[rmin : rmax + 1, cmin : cmax + 1]
+        ys_region = ys_mat[rmin : rmax + 1, cmin : cmax + 1]
+        # Real known-data cells within this work area are the reference set. Do not
+        # use cur_inpaint_mask directly: cells outside the work area were folded into
+        # it above and are not real data.
+        known = np.logical_and(
+            ~mask_int[rmin : rmax + 1, cmin : cmax + 1],
+            cur_work_area[rmin : rmax + 1, cmin : cmax + 1],
+        )
+        filled = ~cur_inpaint_mask
+        if np.any(known) and np.any(filled):
+            far_full = np.zeros_like(cur_inpaint_mask, dtype=bool)
+            far_full[filled] = _too_far_from_data(
+                xs_region[filled],
+                ys_region[filled],
+                xs_region[known],
+                ys_region[known],
+                params.max_distance_to_data,
+            )
+            cur_elevation_int[far_full] = np.nan
 
     # Paste results back (slice reference avoids a copy)
     elevation_slice = elevation_int[rmin : rmax + 1, cmin : cmax + 1]
@@ -589,7 +681,7 @@ def add_common_fd_pde_inpainters_args(parser):
     parser.add_argument(
         "--mgs_levels",
         type=int,
-        default=1,
+        default=5,
         help="Levels of the Multi-grid solver. I.e., number of levels of detail used in the solving pyramid",
     )
     parser.add_argument(
@@ -620,17 +712,27 @@ def add_common_fd_pde_inpainters_args(parser):
     )
     parser.add_argument(
         "--use_direct_solver",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Use a direct solver instead of an iterative one",
+    )
+    parser.add_argument(
+        "--direct_solver",
+        type=str,
+        default="cg",
+        choices=["cg", "minres"],
+        help="Sparse solver to use when --use_direct_solver is set: 'cg' "
+        "(conjugate gradient, for SPD systems) or 'minres' (for symmetric "
+        "indefinite systems) (default: cg)",
     )
     parser.add_argument(
         "--cg_term_thres",
         type=float,
-        default=1e-6,
+        default=1e-4,
         help="Convergence tolerance (rtol) for the sparse CG/minres solver "
         "when --use_direct_solver is set. This is independent of "
         "--term_thres and --term_criteria, which only apply to the "
-        "iterative solver (default: 1e-6)",
+        "iterative solver (default: 1e-4)",
     )
     return parser
 
@@ -654,6 +756,7 @@ def get_common_fd_pde_inpainters_params_from_args(params):
         "convolver": params.convolver,
         "debug_dir": params.debug_dir,
         "use_direct_solver": params.use_direct_solver,
+        "direct_solver": params.direct_solver,
         "cg_term_thres": params.cg_term_thres,
     }
     return options
@@ -838,6 +941,65 @@ def add_subparsers(subparsers):
 
     # Parser for the "mlp" method
     parser_mlp = subparsers.add_parser("mlp", help="Multi-Layer Perceptron interpolant")
+    parser_mlp.add_argument(
+        "--hidden_dims",
+        type=int,
+        nargs="+",
+        default=[64, 128, 128, 128, 128, 64],
+        help="Sizes of the hidden layers of the MLP, as a space-separated list (default: 64 128 128 128 128 64)",
+    )
+    parser_mlp.add_argument(
+        "--use_fourier",
+        action="store_true",
+        help="Use Fourier feature encoding of the input coordinates, which helps the network learn high-frequency details (default: false)",
+    )
+    parser_mlp.add_argument(
+        "--num_frequencies",
+        type=int,
+        default=10,
+        help="Number of Fourier frequencies to use. Only relevant if --use_fourier is set (default: 10)",
+    )
+    parser_mlp.add_argument(
+        "--fourier_scale",
+        type=float,
+        default=1.0,
+        help="Scale of the Fourier features. Only relevant if --use_fourier is set (default: 1.0)",
+    )
+    parser_mlp.add_argument(
+        "--lr",
+        type=float,
+        default=1e-3,
+        help="Learning rate for the Adam optimizer (default: 1e-3)",
+    )
+    parser_mlp.add_argument(
+        "--smoothness_weight",
+        type=float,
+        default=0.0,
+        help="Weight of the smoothness (Laplacian) regularization loss. Larger values yield smoother interpolations (default: 0.0, i.e., disabled)",
+    )
+    parser_mlp.add_argument(
+        "--use_density_weighting",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Weight the training samples by the inverse of their local density, so that sparse regions get more importance. Disable with --no-use_density_weighting (default: true)",
+    )
+    parser_mlp.add_argument(
+        "--epochs",
+        type=int,
+        default=10000,
+        help="Number of training epochs (default: 10000)",
+    )
+    parser_mlp.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device to run the MLP on (e.g. 'cpu', 'cuda', 'cuda:0'). By default it uses the GPU if available, and falls back to the CPU otherwise",
+    )
+    parser_mlp.add_argument(
+        "--show_loss_plots",
+        action="store_true",
+        help="Show live matplotlib plots of the training losses. Requires a GUI backend, so keep it off on headless machines (default: false)",
+    )
 
     # Parser for the "poisson" method
     parser_ams = subparsers.add_parser(
@@ -929,6 +1091,36 @@ def add_subparsers(subparsers):
         help="Importance that interpolation of the samples' gradients is given in the fitting of the function (default: 1.0)",
     )
     parser_ams.add_argument(
+        "--estimate_gradients",
+        action="store_true",
+        help="Estimate gradients at the input points (via a local plane fit) and"
+        " also fit them, in addition to the values. Only reliable gradients are"
+        " kept. Their influence is controlled by --gradient_weight (default: false)",
+    )
+    parser_ams.add_argument(
+        "--gradient_neighbors",
+        type=int,
+        default=8,
+        help="Number of nearest neighbors used to estimate the gradient at each"
+        " input point (default: 8)",
+    )
+    parser_ams.add_argument(
+        "--gradient_max_distance",
+        type=float,
+        default=None,
+        help="Maximum distance (in coordinate units) to the furthest neighbor used"
+        " for a point's gradient to be considered reliable. If not set, it is"
+        " derived automatically from the data spacing (default: auto)",
+    )
+    parser_ams.add_argument(
+        "--gradient_min_planarity",
+        type=float,
+        default=0.0,
+        help="Minimum coefficient of determination (R^2) of the local plane fit to"
+        " keep a point's gradient, in [0, 1]. Set to 0 to disable this filter"
+        " (default: 0.0)",
+    )
+    parser_ams.add_argument(
         "--scale",
         type=float,
         default=1.1,
@@ -989,27 +1181,27 @@ def add_subparsers(subparsers):
         help="GMT continuous-curvature spline-in-tension gridder (requires pygmt/GMT)",
     )
     parser_gmt.add_argument(
-        "--gmt_tension",
+        "--tension",
         type=float,
         default=0.0,
         help="Tension factor in [0..1] (GMT -T). 0 = minimum curvature; higher values"
         " reduce overshoot near steep gradients (default: 0.0)",
     )
     parser_gmt.add_argument(
-        "--gmt_convergence_limit",
+        "--convergence_limit",
         type=float,
         default=0.0,
         help="Convergence limit (GMT -C). 0 = GMT default (default: 0.0)",
     )
     parser_gmt.add_argument(
-        "--gmt_max_radius",
+        "--max_radius",
         type=str,
         default=None,
         help="Search radius for nearest-data initialization (GMT -M), e.g. '5c'"
         " (default: GMT default)",
     )
     parser_gmt.add_argument(
-        "--gmt_max_iterations",
+        "--max_iterations",
         type=int,
         default=None,
         help="Maximum number of iterations (GMT -N). None = GMT default (default: None)",

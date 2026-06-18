@@ -25,6 +25,9 @@ from py_ams_point_interpolant.ams_point_interpolant import (
 
 from heightmap_interpolation.interpolants.interpolant import Interpolant
 from heightmap_interpolation.misc.conditional_print import ConditionalPrint
+from heightmap_interpolation.misc.gradient_estimation import (
+    estimate_scattered_gradients,
+)
 
 
 class AMSInterpolant(Interpolant):
@@ -58,6 +61,10 @@ class AMSInterpolant(Interpolant):
         exact_interpolation=False,
         verbose=False,
         transform_file="",
+        estimate_gradients=False,
+        gradient_neighbors=8,
+        gradient_max_distance=None,
+        gradient_min_planarity=0.7,
     ):
         """Constructor"""
         # Base class constructor
@@ -91,13 +98,31 @@ class AMSInterpolant(Interpolant):
         schedule = ["static", "dynamic"].index(parallel_schedule)
         parallel_type_id = parallel_types.index(parallel_type)
 
+        # Optionally estimate gradients at the input points to also fit them
+        positions_gradients = np.array([])
+        gradients = np.array([])
+        if estimate_gradients:
+            positions_gradients, gradients = estimate_scattered_gradients(
+                x,
+                y,
+                z,
+                num_neighbors=gradient_neighbors,
+                max_distance=gradient_max_distance,
+                min_planarity=gradient_min_planarity,
+            )
+            self.cp.print(
+                "- Estimated reliable gradients for {:d}/{:d} input points".format(
+                    positions_gradients.shape[0], np.asarray(z).size
+                )
+            )
+
         # Create the interpolant
         points = np.column_stack((x, y))
         self.interp = ams_point_interpolant_2d(
             points,
             z,
-            np.array([]),  # Not used for the moment
-            np.array([]),  # Not used for the moment
+            positions_gradients,
+            gradients,
             depth=depth,
             degree=degree,
             solve_depth=solve_depth,
