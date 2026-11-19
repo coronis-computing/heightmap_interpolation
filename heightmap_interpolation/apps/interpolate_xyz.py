@@ -62,33 +62,37 @@ def load_interpolation_input_data_xyz(
         min_y = np.min(ys)
     elif min_y > np.min(ys):
         print(
-            "[WARNING] the minimum Y requested ({:f}) is larger than the minimum Y of the samples ({:f})",
-            min_y,
-            np.min(ys),
+            "[WARNING] the minimum Y requested ({:f}) is larger than the minimum Y of the samples ({:f})".format(
+                min_y,
+                np.min(ys),
+            )
         )
     if np.isnan(min_x):
         min_x = np.min(xs)
     elif min_x > np.min(xs):
         print(
-            "[WARNING] the minimum X requested ({:f}) is larger than the minimum X of the samples ({:f})",
-            min_x,
-            np.min(xs),
+            "[WARNING] the minimum X requested ({:f}) is larger than the minimum X of the samples ({:f})".format(
+                min_x,
+                np.min(xs),
+            )
         )
     if np.isnan(max_y):
         max_y = np.max(ys)
     elif max_y < np.max(ys):
         print(
-            "[WARNING] the maximum Y requested ({:f}) is smaller than the maximum Y of the samples ({:f})",
-            max_y,
-            np.max(ys),
+            "[WARNING] the maximum Y requested ({:f}) is smaller than the maximum Y of the samples ({:f})".format(
+                max_y,
+                np.max(ys),
+            )
         )
     if np.isnan(max_x):
         max_x = np.max(xs)
     elif max_x < np.max(xs):
         print(
-            "[WARNING] the maximum X requested ({:f}) is smaller than the maximum X of the samples ({:f})",
-            max_x,
-            np.max(xs),
+            "[WARNING] the maximum X requested ({:f}) is smaller than the maximum X of the samples ({:f})".format(
+                max_x,
+                np.max(xs),
+            )
         )
 
     # Check the values...
@@ -97,19 +101,19 @@ def load_interpolation_input_data_xyz(
     if min_x > max_x:
         raise Exception("the minimum X cannot be larger than the maximum X")
 
-    ys_1d = np.linspace(min_y, max_y, math.ceil((max_y - min_y) / raster_step))
-    xs_1d = np.linspace(min_x, max_x, math.ceil((max_x - min_x) / raster_step))
-
-    # Get the dimensions of the grid
-    num_y = len(ys_1d)
-    num_x = len(xs_1d)
+    # Grid cells at exactly raster_step spacing, starting at the minimum coordinate and
+    # covering up to the maximum one (to the nearest cell)
+    num_y = int(round((max_y - min_y) / raster_step)) + 1
+    num_x = int(round((max_x - min_x) / raster_step)) + 1
+    ys_1d = min_y + raster_step * np.arange(num_y)
+    xs_1d = min_x + raster_step * np.arange(num_x)
 
     # Create the matrix of x/y coordinates out of the 1D arrays
     ys_mat = np.tile(ys_1d.reshape(-1, 1), (1, num_x))
     xs_mat = np.tile(xs_1d, (num_y, 1))
 
     # Create an EMPTY elevation data
-    elevation = np.zeros_like(ys_mat)
+    elevation = np.full_like(ys_mat, np.nan)
 
     work_areas = create_work_areas(elevation, areas_kml_file, xs_1d, ys_1d)
 
@@ -128,7 +132,11 @@ def samples_to_grid(xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation):
         accum[y_ind, x_ind] += elev
         num_elems[y_ind, x_ind] += 1
 
-    return accum / num_elems, num_elems == 0
+    empty = num_elems == 0
+    elevation = np.divide(
+        accum, num_elems, out=np.full_like(accum, np.nan), where=~empty
+    )
+    return elevation, empty
 
 
 def find_nearest_ind(array, value):
@@ -167,6 +175,35 @@ def rasterize(params):
         te = timer()
         condp.print(" done, {:.2f} sec.".format(te - ts))
 
+    scattered_methods = get_available_scattered_methods()
+    gridded_methods = get_available_gridded_methods()
+
+    requested_method = params.subparser_name.lower()
+    if (
+        requested_method not in scattered_methods
+        and requested_method not in gridded_methods
+    ):
+        raise ValueError(
+            f"Experimental method {requested_method} requested, but the experimental dependencies were not installed (use pip install heightmap_interpolation[experimental])"
+        )
+    is_scattered = requested_method in scattered_methods
+
+    # Bin the input samples into the output grid: cells containing samples get their
+    # (mean) value, the rest are NaN and are the ones to interpolate (mask_int). Cells
+    # outside the work areas keep these values.
+    elevation_src, mask_int = samples_to_grid(
+        xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation_int
+    )
+    elevation_int = np.copy(elevation_src)
+    in_work_areas = np.any(work_areas, axis=2)
+
+    # Cells that will be interpolated: all the cells within the work areas for the
+    # scattered methods, just the empty ones within the work areas for the gridded ones
+    if is_scattered:
+        interpolated = in_work_areas
+    else:
+        interpolated = np.logical_and(mask_int, in_work_areas)
+
     # Show a bit of information regarding the interpolation problem (percentage of missing data to interpolate w.r.t. the full image)
     if params.verbose:
         condp.print("- Summary of input data:")
@@ -180,46 +217,32 @@ def rasterize(params):
             condp.print(
                 "    - Data will be interpolated just at the user-defined areas"
             )
-        else:
-            total_cells = elevation_int.shape[0] * elevation_int.shape[1]
-            num_cells_to_interpolate = len(elevation_int)
-            interp_percent = (num_cells_to_interpolate / total_cells) * 100
-            condp.print(
-                "    - Cells to interpolate represent {:.2f}% of the image:".format(
-                    interp_percent
-                )
+        total_cells = elevation_int.shape[0] * elevation_int.shape[1]
+        num_cells_to_interpolate = int(np.count_nonzero(interpolated))
+        interp_percent = (num_cells_to_interpolate / total_cells) * 100
+        condp.print(
+            "    - Cells to interpolate represent {:.2f}% of the image:".format(
+                interp_percent
             )
-            (condp.print("        - Total cells = {:d}".format(total_cells)),)
-            condp.print(
-                "        - Number of reference cells = {:d}".format(
-                    total_cells - num_cells_to_interpolate
-                )
+        )
+        condp.print("        - Total cells = {:d}".format(total_cells))
+        condp.print(
+            "        - Number of cells with samples = {:d}".format(
+                int(np.count_nonzero(~mask_int))
             )
-            condp.print(
-                "        - Number of cells to interpolate = {:d}".format(
-                    num_cells_to_interpolate
-                )
+        )
+        condp.print(
+            "        - Number of cells to interpolate = {:d}".format(
+                num_cells_to_interpolate
             )
-
-    scattered_methods = get_available_scattered_methods()
-    gridded_methods = get_available_gridded_methods()
-
-    requested_method = params.subparser_name.lower()
-    if (
-        requested_method not in scattered_methods
-        and requested_method not in gridded_methods
-    ):
-        raise ValueError(
-            f"Experimental method {requested_method} requested, but the experimental dependencies were not installed (use pip install heightmap_interpolation[experimental])"
         )
 
     for i in range(work_areas.shape[2]):
         cur_work_area = work_areas[:, :, i]
 
         # --- Scattered data interpolation ---
-        if params.subparser_name.lower() in scattered_methods:
+        if is_scattered:
             # All grid points within the work area will be interpolated
-            mask_int = np.ones_like(elevation_int)
             xs_int = xs_mat[cur_work_area]
             ys_int = ys_mat[cur_work_area]
             if params.verbose and params.areas:
@@ -238,13 +261,10 @@ def rasterize(params):
             elevation_int[cur_work_area] = zi
 
         # --- Gridded data interpolation/inpainting ---
-        if params.subparser_name.lower() in gridded_methods:
-            elevation_int, mask_int = samples_to_grid(
-                xs_ref, ys_ref, elevation_ref, ys_mat, xs_mat, elevation_int
-            )
+        else:
             run_gridded_inpainting(
                 params,
-                elevation_int,
+                elevation_src,
                 elevation_int,
                 mask_int,
                 xs_mat,
@@ -254,6 +274,13 @@ def rasterize(params):
                 work_areas.shape[2],
                 condp,
             )
+
+    if is_scattered:
+        # Some scattered methods return NaN at some points (e.g., linear/cubic on the
+        # boundary of the convex hull of the data): keep the samples' value there
+        restore = interpolated & np.isnan(elevation_int) & ~mask_int
+        elevation_int[restore] = elevation_src[restore]
+        interpolated = interpolated & ~restore
 
     # Clip the interpolated values to the input data range to remove overshoots
     if params.truncate_to_input_range:
@@ -268,7 +295,7 @@ def rasterize(params):
         write_interpolation_results_new_file(
             params.output_file,
             elevation_int,
-            mask_int,
+            interpolated,
             ys_mat[:, 0],
             xs_mat[0, :],
             params.elevation_var,
@@ -279,9 +306,9 @@ def rasterize(params):
     if params.show:
         condp.print("- Showing results (close the window to continue)")
         show_interpolation_results(
+            elevation_src,
             elevation_int,
-            elevation_int,
-            mask_int,
+            interpolated,
             xs_mat,
             ys_mat,
             x_var_name=params.x_var,

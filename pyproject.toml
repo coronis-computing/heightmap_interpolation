@@ -14,6 +14,10 @@ license = { file="LICENSE" }
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Natural Language :: English"
 ]
@@ -23,14 +27,12 @@ dependencies = [
     'haversine>=2.5.1',
     'scipy>=1.7.1',
     'netCDF4>=1.5.7',
-    'fiona',
     'geopy>=2.2.0',
-    'geopandas>=0.9.0',
-    'opencv-python-headless>=4.5.3.56',    
+    'geopandas>=1.0',
+    'opencv-python-headless>=4.5.3.56,<5',  # <5: exemplar_based_inpainting (ebi) breaks with OpenCV 5
     'numba>=0.54.1',
     'psutil>=5.8.0',
-    'taichi',            
-    'py_ams_point_interpolant'
+    'py_ams_point_interpolant>=0.1.1rc1'
 ]
 
 [project.urls]
@@ -42,9 +44,16 @@ docs = [
     'sphinx-rtd-theme',
     'sphinx-autobuild'
 ]
+gpu = [
+    # GPU backend of the FD-PDE inpainters (--backend gpu). Taichi Forge is a maintained,
+    # API-compatible fork of Taichi with wheels for Python 3.10-3.14. Do not install it
+    # together with the original 'taichi' package in the same environment.
+    'taichi-forge'
+]
 experimental = [
-    'opencv-contrib-python-headless>=4.5.3.56', # Shiftmap
+    'opencv-contrib-python-headless>=4.5.3.56,<5', # Shiftmap (<5: see opencv-python-headless above)
     'exemplar-based-inpainting', # EBI
+    'opencv-python<5', # Pulled (unpinned) by exemplar-based-inpainting, which breaks with OpenCV 5
     'torch', # MLP
     'pygmt' # GMT surface gridder (also requires the GMT binaries on the system)
 ]

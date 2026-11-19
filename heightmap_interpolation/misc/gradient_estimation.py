@@ -80,12 +80,19 @@ def estimate_scattered_gradients(
     tree = cKDTree(pts)
     dist, idx = tree.query(pts, k=k, workers=-1)  # (n, k) each
 
-    # Local design tensor A = [1, dx, dy] for every point's neighborhood
+    # Local design tensor A = [1, dx, dy] for every point's neighborhood. The offsets
+    # are normalized by the distance to the furthest neighbor, so that the fit (and
+    # the condition number used below to filter degenerate neighborhoods) does not
+    # depend on the units of the coordinates: otherwise, with geographic coordinates
+    # (offsets ~1e-3 deg) every neighborhood looks ill-conditioned.
+    furthest = dist[:, -1]
+    nonzero_extent = furthest > 0  # all neighbors at the same location -> degenerate
+    scale = np.where(nonzero_extent, furthest, 1.0)
     nbr_x = x[idx]  # (n, k)
     nbr_y = y[idx]
     nbr_z = z[idx]
-    dx = nbr_x - x[:, None]
-    dy = nbr_y - y[:, None]
+    dx = (nbr_x - x[:, None]) / scale[:, None]
+    dy = (nbr_y - y[:, None]) / scale[:, None]
     A = np.stack((np.ones_like(dx), dx, dy), axis=2)  # (n, k, 3)
 
     # Batched normal equations: (A^T A) coeffs = A^T z, solved per point
@@ -95,17 +102,17 @@ def estimate_scattered_gradients(
     # Geometry filter: drop ill-conditioned (near-collinear) neighborhoods. These
     # would also make np.linalg.solve fail, so solve only the valid ones.
     cond = np.linalg.cond(ata)
-    well_conditioned = np.isfinite(cond) & (cond <= max_condition)
+    well_conditioned = nonzero_extent & np.isfinite(cond) & (cond <= max_condition)
 
     coeffs = np.zeros((n, 3))
     if np.any(well_conditioned):
         coeffs[well_conditioned] = np.linalg.solve(
             ata[well_conditioned], atz[well_conditioned][..., None]
         )[..., 0]
-    grads = coeffs[:, 1:]  # (n, 2) -> (dz/dx, dz/dy)
+    # (n, 2) -> (dz/dx, dz/dy), back in the units of the input coordinates
+    grads = coeffs[:, 1:] / scale[:, None]
 
     # Locality filter: the furthest requested neighbor must be close enough
-    furthest = dist[:, -1]
     if max_distance is None:
         max_distance = 2.0 * np.median(furthest)
     close_enough = furthest <= max_distance

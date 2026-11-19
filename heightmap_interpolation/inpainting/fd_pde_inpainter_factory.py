@@ -2,9 +2,6 @@ from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
 from heightmap_interpolation.inpainting.opencv_inpainter import OpenCVInpainter
 from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
-from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
-    TaichiFDPDEInpainter,
-)
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
 
 
@@ -84,11 +81,17 @@ def create_fd_pde_inpainter(method, custom_options=None):
         options["max_iters"] = 1e8
         # options["relaxation"] = 1.4
         options["tension"] = 0.3
-        inpainter = CCSTInpainter(**options)
-        if len(method) > 4 and method[4:] == "ti":
+        if method.lower() == "ccst":
+            inpainter = CCSTInpainter(**options)
+        elif method.lower() == "ccst-ti":
+            from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
+                TaichiFDPDEInpainter,
+            )
+
             options["ti_arch"] = "gpu"
             inpainter = TaichiFDPDEInpainter(**options)
         else:
+            inpainter = None
             print(
                 "[ERROR] The required method ("
                 + method

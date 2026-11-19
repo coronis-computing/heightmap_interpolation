@@ -5,10 +5,46 @@ from timeit import default_timer as timer
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import taichi as ti
 
 import heightmap_interpolation.inpainting.differential as diff
 from heightmap_interpolation.inpainting.initializer import Initializer
+from heightmap_interpolation.inpainting.taichi_backend import require_taichi
+from heightmap_interpolation.misc.image_proc import halve_image
+
+ti = require_taichi()
+
+
+@ti.data_oriented
+class _TaichiGridFields:
+    """Taichi fields of a single (pyramid level) inpainting problem.
+
+    The kernels of TaichiFDPDEInpainter receive this object as a ti.template()
+    argument. Taichi specializes template kernels per object, so each pyramid level
+    gets kernels bound to its own fields. (Accessing fields as ``self.<field>`` in
+    the kernels instead binds them at the first compilation: re-creating the fields
+    for the next pyramid level then leaves the kernels working on the stale fields of
+    the first level.)
+    """
+
+    def __init__(self, image_np, mask_np, mask_inv_np, mask_inp_np):
+        h, w = image_np.shape[0:2]
+        self.image = ti.field(dtype=ti.f32, shape=(h, w))
+        self.image.from_numpy(image_np)
+        self.f = ti.field(dtype=ti.f32, shape=(h, w))
+        self.f.from_numpy(image_np)
+        self.fprev = ti.field(dtype=ti.f32, shape=(h, w))
+        self.fprev.from_numpy(image_np)
+        # Boolean types do not exist, so we convert them to integers
+        self.mask = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask.from_numpy(np.asarray(mask_np, dtype=np.int8))
+        self.mask_inv = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask_inv.from_numpy(np.asarray(mask_inv_np, dtype=np.int8))
+        self.mask_inp = ti.field(dtype=ti.i8, shape=(h, w))
+        self.mask_inp.from_numpy(np.asarray(mask_inp_np, dtype=np.int8))
+        # Some helper intermediate matrices
+        self.harmonic = ti.field(dtype=ti.f32, shape=(h, w))
+        self.biharmonic = ti.field(dtype=ti.f32, shape=(h, w))
+        self.step_f = ti.field(dtype=ti.f32, shape=(h, w))
 
 
 @ti.data_oriented
@@ -107,18 +143,21 @@ class TaichiFDPDEInpainter:
         self.initializer = Initializer(self.init_with)
 
         # Initialize Taichi Lang
-        if self.ti_arch == "cpu":
+        archs = ("cpu", "gpu", "cuda", "vulkan", "opengl", "metal")
+        if self.ti_arch not in archs:
+            raise ValueError(
+                "Unknown ti_arch '{}'. Options: {}".format(self.ti_arch, ", ".join(archs))
+            )
+        try:
+            ti.init(arch=getattr(ti, self.ti_arch))
+        except Exception as e:
+            if self.ti_arch == "cpu":
+                raise
+            print(
+                "[WARNING] Could not initialize the Taichi '{}' backend ({}). "
+                "Falling back to 'cpu'.".format(self.ti_arch, e)
+            )
             ti.init(arch=ti.cpu)
-        elif self.ti_arch == "gpu":
-            ti.init(arch=ti.gpu)
-        elif self.ti_arch == "cuda":
-            ti.init(arch=ti.cuda)
-        elif self.ti_arch == "vulkan":
-            ti.init(arch=ti.vulkan)
-        elif self.ti_arch == "opengl":
-            ti.init(arch=ti.opengl)
-        elif self.ti_arch == "metal":
-            ti.init(arch=ti.metal)
 
         # Define Taichi constants
         self.laplacian_kernel_2d_ti = ti.field(dtype=ti.f32, shape=(3, 3))
@@ -148,6 +187,10 @@ class TaichiFDPDEInpainter:
         self.term_criteria_int = self.map_term_criteria_str_to_int.get(
             self.term_criteria, -1
         )
+        # Effective threshold used in the termination checks. Do not overwrite
+        # self.term_thres here, this function is called once per solve (e.g., at each
+        # level of the multigrid pyramid) and it would compound the scaling.
+        self.term_thres_eff = self.term_thres
         if self.term_criteria_int == 0:
             self.print_msg(
                 "* Termination criteria --> relative change = {:f}".format(
@@ -162,14 +205,17 @@ class TaichiFDPDEInpainter:
             )
         elif self.term_criteria_int == 2:
             # Adapt the termination threshold based on the range of depth values on the map
-            max_val = np.max(self.f.to_numpy())
-            min_val = np.min(self.f.to_numpy())
+            f_np = self.g.f.to_numpy()
+            max_val = np.max(f_np)
+            min_val = np.min(f_np)
             z_range = abs(max_val - min_val)
             self.print_msg("* Termination criteria --> absolute percent change:")
             self.print_msg(f"    - Abs. Z range: {z_range:f}")
             self.print_msg(f"    - Percent = {self.term_thres:f}")
-            self.term_thres = z_range * self.term_thres
-            self.print_msg(f"    - Terminate if absolute change < {self.term_thres:f}")
+            self.term_thres_eff = z_range * self.term_thres
+            self.print_msg(
+                f"    - Terminate if absolute change < {self.term_thres_eff:f}"
+            )
         else:
             raise ValueError("Unknown termination criteria!")
 
@@ -223,7 +269,7 @@ class TaichiFDPDEInpainter:
             print(
                 "[WARNING] A multigrid solver was requested, but the size of the image is too small, defaulting to a single-scale inpainting"
             )
-            return self.inpaint_grid(image, mask)
+            return self.inpaint_grid(self.initializer.initialize(image, mask), mask)
 
         # Create the multi-scale pyramid
         self.print_start("Creating the image pyramid... ")
@@ -242,12 +288,11 @@ class TaichiFDPDEInpainter:
                 )
                 num_levels = level
                 break
-            dim = (width, height)
-            image_rs = cv2.resize(image_pyramid[level - 1], dim)
+            # Decimate (as in FDPDEInpainter) instead of interpolating: interpolation
+            # would blend the placeholder values of the unknown cells into the known ones
+            image_rs = halve_image(image_pyramid[level - 1])
             image_pyramid.append(image_rs)
-            mask_rs = (
-                cv2.resize(np.asarray(mask_pyramid[level - 1], dtype="uint8"), dim) == 1
-            )
+            mask_rs = halve_image(np.asarray(mask_pyramid[level - 1], dtype="uint8"))
             # Special case! If the image contains nans, resizing may increase those nans out of the resized mask, so we extend it to include the positions which are NaN in the image
             mask_valid = ~np.isnan(image_rs)
             mask_rs = np.logical_and(mask_rs, mask_valid)
@@ -279,14 +324,24 @@ class TaichiFDPDEInpainter:
             )
         self.print_end()
         self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(num_levels - 1))
+        # Coarser levels only provide an initial guess: looser termination, fewer iters
+        original_term_thres = self.term_thres
+        original_max_iters = self.max_iters
+        self.term_thres = original_term_thres * 2 ** (num_levels)
+        self.max_iters = max(1, original_max_iters // 2 ** (num_levels))
         inpainted_lower_scale = self.inpaint_grid(
             init_lower_scale, mask_pyramid[num_levels - 1] > 0
         )
         self.print_end()
         if num_levels == 1:
+            self.term_thres = original_term_thres
+            self.max_iters = original_max_iters
             return inpainted_lower_scale
         for level in range(num_levels - 2, -1, -1):
             self.print_start("[Pyramid Level {:d}] Inpainting...\n".format(level))
+
+            self.term_thres = original_term_thres * 2**level
+            self.max_iters = max(1, original_max_iters // 2**level)
 
             image = image_pyramid[level]
             mask = mask_pyramid[level]
@@ -296,13 +351,11 @@ class TaichiFDPDEInpainter:
                 inpainted_lower_scale, dsize=(image.shape[1], image.shape[0])
             )
 
-            # Special case: the first level of the pyramid may contain NaNs! (because we did not initialize it)
-            # This will make the masking below to fail, so remove and substitute by zeros
-            if level == 0 and np.any(np.isnan(image)):
-                image[np.isnan(image)] = 0
-
-            # Use the upscaled solution as initial guess
-            image = upscaled_inpainted_lower_scale * (~mask) + image * mask
+            # Use the upscaled solution as initial guess for the unknown cells.
+            # NOTE: use np.where instead of "a * (~mask) + b * mask": the pyramid levels
+            # contain NaNs at the unknown cells and NaN * 0 = NaN, which would propagate
+            # through the whole solution.
+            image = np.where(mask, image, upscaled_inpainted_lower_scale)
 
             # Prepare the debug folder
             if self.debug_dir:
@@ -321,6 +374,8 @@ class TaichiFDPDEInpainter:
             if level > 0:
                 inpainted_lower_scale = inpainted
 
+        self.term_thres = original_term_thres
+        self.max_iters = original_max_iters
         return inpainted
 
     def inpaint_grid(self, image_np, mask_np):
@@ -333,42 +388,18 @@ class TaichiFDPDEInpainter:
         # Output:
         #   f: inpainted image
 
-        mask_inv_np = 1 - mask_np
-
-        if self.convolver_type.startswith("masked"):
-            mask_inp_np = (
-                cv2.dilate(np.asarray(mask_inv_np, dtype="uint8"), np.ones((3, 3))) == 1
-            )
-        else:
-            mask_inp_np = None
+        mask_np = np.asarray(mask_np, dtype=bool)
+        mask_inv_np = ~mask_np
         # !!! TODO: use the mask_inp...
-
-        # Convert to Taichi types
-        h, w = image_np.shape[0:2]
-        self.image = ti.field(dtype=ti.f32, shape=(h, w))
-        self.f = ti.field(dtype=ti.f32, shape=(h, w))
-        self.image.from_numpy(image_np)
-        self.f.from_numpy(image_np)
-
-        # Boolean types do not exist, so we convert them to integers
-        self.mask = ti.field(dtype=ti.i8, shape=(h, w))
-        self.mask.from_numpy(mask_np.astype(int))
-        self.mask_inv = ti.field(dtype=ti.i8, shape=(h, w))
-        self.mask_inv.from_numpy(mask_inv_np.astype(int))
         mask_inp_np = (
             cv2.dilate(np.asarray(mask_inv_np, dtype="uint8"), np.ones((3, 3))) == 1
         )
-        self.mask_inp = ti.field(dtype=ti.i8, shape=(h, w))
-        self.mask_inp.from_numpy(mask_inp_np.astype(int))
 
-        # Some helper intermediate matrices
-        self.harmonic = ti.field(dtype=ti.f32, shape=(h, w))
-        self.biharmonic = ti.field(dtype=ti.f32, shape=(h, w))
-        self.step_f = ti.field(dtype=ti.f32, shape=(h, w))
-        self.fprev = ti.field(dtype=ti.f32, shape=(h, w))
-        self.fprev.from_numpy(image_np)
-        # self.fnew = ti.field(dtype=ti.f32, shape=(h, w))
-        # self.fnew.from_numpy(f_np)
+        # Convert to Taichi types. A new fields object is created for each call (i.e.,
+        # for each pyramid level), and passed to the kernels as a template argument.
+        self.g = _TaichiGridFields(
+            np.asarray(image_np, dtype=np.float32), mask_np, mask_inv_np, mask_inp_np
+        )
 
         # Set the termination criteria
         self.set_term_criteria()
@@ -379,7 +410,7 @@ class TaichiFDPDEInpainter:
         # self.inpaint_loop_no_progress()
 
         # Return the results
-        return self.f.to_numpy()
+        return self.g.f.to_numpy()
 
     # Printing utilities...
     def print_start(self, msg):
@@ -403,12 +434,12 @@ class TaichiFDPDEInpainter:
 
     def inpaint_loop(self):
         # Iterate until convergence (or max number of iterations reached)
+        g = self.g
         iter = 0
         converged = False
         while not converged and iter < self.max_iters:
             # Perform a step in the optimization
-            # converged = self.inpaint_step(iter)
-            self.update()
+            self.update(g)
             if iter % self.term_check_iters == 0:
                 converged, diff = self.term_check()
             if self.print_progress and iter % self.print_progress_iters == 0:
@@ -418,11 +449,9 @@ class TaichiFDPDEInpainter:
                     print("+-----------+-----------------+")
                     print(self.print_progress_table_row_str.format(iter, diff))
 
-            if iter > 0 and (iter + 1) % self.rel_change_iters == 0:
-                # In the following iteration, we will have to check the relative change, so save the last value
-                self.fprev.copy_from(self.f)
-                # self.update_f()
-            # self.fnew.copy_from(self.f)
+            if iter > 0 and (iter + 1) % self.term_check_iters == 0:
+                # In the following iteration, we will have to check the change, so save the last value
+                g.fprev.copy_from(g.f)
             iter += 1
         if iter >= self.max_iters:
             print(
@@ -431,13 +460,16 @@ class TaichiFDPDEInpainter:
 
     def inpaint_loop_2(self):
         # Iterate until convergence (or max number of iterations reached)
+        g = self.g
         iter = 0
         converged = False
-        print("+-----------+-----------------+")
-        print("| Iteration | Function change |")
-        print("+-----------+-----------------+")
+        diff = float("nan")
+        if self.print_progress:
+            print("+-----------+-----------------+")
+            print("| Iteration | Function change |")
+            print("+-----------+-----------------+")
         if self.debug_dir:
-            imgplot = plt.imshow(self.f.to_numpy())
+            imgplot = plt.imshow(g.f.to_numpy())
             plt.savefig(
                 os.path.join(
                     self.current_level_debug_dir, "progress", "{:010d}.png".format(iter)
@@ -446,17 +478,16 @@ class TaichiFDPDEInpainter:
             )
         while not converged and iter < self.max_iters:
             for i in range(self.term_check_iters):
-                self.update()
-            self.fprev.copy_from(self.f)
-            self.update()
-            # diff = self.step_diff()
+                self.update(g)
+            g.fprev.copy_from(g.f)
+            self.update(g)
             converged, diff = self.term_check()
 
             iter = iter + self.term_check_iters
             if self.print_progress and iter % self.print_progress_iters == 0:
                 print(self.print_progress_table_row_str.format(iter, diff))
                 if self.debug_dir:
-                    imgplot = plt.imshow(self.f.to_numpy())
+                    imgplot = plt.imshow(g.f.to_numpy())
                     plt.savefig(
                         os.path.join(
                             self.current_level_debug_dir,
@@ -466,26 +497,26 @@ class TaichiFDPDEInpainter:
                         bbox_inches="tight",
                     )
 
-        if iter >= self.max_iters:
+        if not converged:
             print(
                 "[WARNING] Inpainting did NOT converge: Maximum number of iterations reached..."
             )
-        else:
+        elif self.print_progress:
             print("+-----------+-----------------+")
             print(self.print_progress_last_table_row_str.format(diff))
             print("+-----------+-----------------+")
 
     @ti.kernel
-    def inpaint_loop_no_progress(self):
+    def inpaint_loop_no_progress(self, g: ti.template()):
         # Iterate until convergence (or max number of iterations reached)
         iter = 0
         converged = False
         while not converged and iter < self.max_iters:
             for i in range(self.term_check_iters):
-                self.update_impl()
-            copy_ti(self.f, self.fprev)
-            self.update_impl()
-            converged, _ = self.term_check_ti()
+                self.update_impl(g)
+            copy_ti(g.f, g.fprev)
+            self.update_impl(g)
+            converged, _ = self.term_check_ti(g)
 
             iter = iter + self.term_check_iters
 
@@ -493,62 +524,53 @@ class TaichiFDPDEInpainter:
         if self.term_criteria_int == 0:
             # Relative change
             # diff = np.linalg.norm(fnew.flatten()-f.flatten(), 2)/np.linalg.norm(fnew.flatten(), 2) # DevNote: by profiling, we found this way to be much slower than the following line!
-            diff = self.step_rel_diff()
+            diff = self.step_rel_diff(self.g)
         elif self.term_criteria_int == 1 or self.term_criteria_int == 2:
             # Absolute change
-            diff = self.step_abs_diff()
+            diff = self.step_abs_diff(self.g)
         else:
             raise RuntimeError("Invalid termination criteria!")
-        terminate = diff < self.term_thres
+        terminate = diff < self.term_thres_eff
         return terminate, diff
 
     @ti.func
-    def term_check_ti(self):
+    def term_check_ti(self, g: ti.template()):
         diff = 0.0
         if ti.static(self.term_criteria_int == 0):
             # Relative change
-            diff = self.step_rel_diff_impl()
+            diff = self.step_rel_diff_impl(g)
         elif ti.static(self.term_criteria_int == 1 or self.term_criteria_int == 2):
             # Absolute change
-            diff = self.step_abs_diff_impl()
+            diff = self.step_abs_diff_impl(g)
         else:
             print("[ERROR] Invalid termination criteria!")
-        terminate = diff < self.term_thres
+        terminate = diff < self.term_thres_eff
         return terminate, diff
-
-    # @ti.kernel
-    # def inpaint_step(self, iter: ti.types.i32) -> ti.types.i32:
-    #     self.update()
-    #     converged = self.converged(iter)
-    #     return converged
 
     @ti.func
     def laplacian(self, img, img_out):
         return convolve_taichi(img, img_out, self.laplacian_kernel_2d_ti)
 
     @ti.func
-    def update_impl(self):
-        # self.ccst_step_fun()
-        self.step_fun()
-        for i in ti.grouped(self.f):
-            new_val = self.f[i] + self.dt * self.step_f[i]
-            self.f[i] = self.pi_fun(new_val, i)
+    def update_impl(self, g: ti.template()):
+        self.step_fun(g)
+        for i in ti.grouped(g.f):
+            new_val = g.f[i] + self.dt * g.step_f[i]
+            g.f[i] = self.pi_fun(g, new_val, i)
             # DevNote: for the moment, we sacrifice relaxation, as it slows down processing a lot as it was originally implemented... maybe we could run it every now and then?
-            # if self.relaxation > 1:
-            #     self.fnew[i] = self.pi_fun(self.f[i] * (1 - self.relaxation) + self.fnew[i] * self.relaxation)
 
     @ti.kernel
-    def update(self):
-        self.update_impl()
+    def update(self, g: ti.template()):
+        self.update_impl(g)
 
     @ti.func
-    def step_rel_diff_impl(self) -> ti.types.f32:
+    def step_rel_diff_impl(self, g: ti.template()) -> ti.types.f32:
         diff_fprev_sq_sum = 0.0
         fprev_sq_sum = 0.0
-        for i in ti.grouped(self.f):
-            diff_fprev = self.f[i] - self.fprev[i]
+        for i in ti.grouped(g.f):
+            diff_fprev = g.f[i] - g.fprev[i]
             diff_fprev_sq = diff_fprev * diff_fprev
-            fprev_sq = self.fprev[i] * self.fprev[i]
+            fprev_sq = g.fprev[i] * g.fprev[i]
             diff_fprev_sq_sum += diff_fprev_sq
             fprev_sq_sum += fprev_sq
         norm_diff_fprev = ti.sqrt(diff_fprev_sq_sum)
@@ -557,77 +579,86 @@ class TaichiFDPDEInpainter:
         return diff
 
     @ti.kernel
-    def step_rel_diff(self) -> ti.types.f32:
-        return self.step_rel_diff_impl()
+    def step_rel_diff(self, g: ti.template()) -> ti.types.f32:
+        return self.step_rel_diff_impl(g)
 
     @ti.func
-    def step_abs_diff_impl(self) -> ti.types.f32:
+    def step_abs_diff_impl(self, g: ti.template()) -> ti.types.f32:
         max_abs_diff = 0.0
-        for i in ti.grouped(self.f):
-            ti.atomic_max(max_abs_diff, abs(self.f[i] - self.fprev[i]))
+        for i in ti.grouped(g.f):
+            ti.atomic_max(max_abs_diff, abs(g.f[i] - g.fprev[i]))
         return max_abs_diff
 
     @ti.kernel
-    def step_abs_diff(self) -> ti.types.f32:
-        return self.step_abs_diff_impl()
+    def step_abs_diff(self, g: ti.template()) -> ti.types.f32:
+        return self.step_abs_diff_impl(g)
 
     @ti.func
-    def update_f_impl(self):
-        for i in ti.grouped(self.f):
-            self.fprev[i] = self.f[i]
+    def update_f_impl(self, g: ti.template()):
+        for i in ti.grouped(g.f):
+            g.fprev[i] = g.f[i]
 
     @ti.kernel
-    def update_f(self):
-        self.update_f_impl()
+    def update_f(self, g: ti.template()):
+        self.update_f_impl(g)
 
     @ti.func
-    def pi_fun(self, val, i):
-        return val * self.mask_inv[i] + self.image[i] * self.mask[i]
+    def pi_fun(self, g: ti.template(), val, i):
+        return val * g.mask_inv[i] + g.image[i] * g.mask[i]
 
     @ti.func
-    def step_fun(self):
+    def step_fun(self, g: ti.template()):
         if ti.static(self.method == "ccst"):
-            self.ccst_step_fun()
+            self.ccst_step_fun(g)
         elif ti.static(self.method == "harmonic"):
-            print("Harmonic")
-            self.harmonic_step_fun()
+            self.harmonic_step_fun(g)
         else:
             print("[ERROR] Unknown method!")
 
     # Step functions for each method
     @ti.func
-    def harmonic_step_fun(self):
-        self.laplacian(self.f, self.step_f)
+    def harmonic_step_fun(self, g: ti.template()):
+        self.laplacian(g.f, g.step_f)
 
     @ti.func
-    def ccst_step_fun(self):
-        self.laplacian(
-            self.f, self.harmonic
-        )  # , mask) !!!Ignoring mask for the moment!!!
-        self.laplacian(self.harmonic, self.biharmonic)
+    def ccst_step_fun(self, g: ti.template()):
+        self.laplacian(g.f, g.harmonic)  # , mask) !!!Ignoring mask for the moment!!!
+        self.laplacian(g.harmonic, g.biharmonic)
 
-        for i in ti.grouped(self.step_f):
-            self.step_f[i] = -1 * (
-                (1 - self.tension) * self.biharmonic[i]
-                - self.tension * self.harmonic[i]
+        for i in ti.grouped(g.step_f):
+            g.step_f[i] = -1 * (
+                (1 - self.tension) * g.biharmonic[i] - self.tension * g.harmonic[i]
             )
-
 
 @ti.func
 def convolve_taichi(img, img_out, kernel):
+    # Same border handling as the CPU convolvers (OpenCV's default BORDER_REFLECT_101).
+    # Truncating the stencil at the borders instead amounts to zero padding, which
+    # pulls the inpainted values next to the grid borders towards 0.
     h, w = img.shape
     fh, _ = kernel.shape
     fr = fh // 2  # Radius of the filter (should be odd!)
 
     for i, j in ti.ndrange(h, w):
-        k_begin, k_end = ti.max(0, i - fr), ti.min(h, i + fr + 1)
-        l_begin, l_end = ti.max(0, j - fr), ti.min(w, j + fr + 1)
-
         total = 0.0
-        for k, l in ti.ndrange((k_begin, k_end), (l_begin, l_end)):
-            total += img[k, l] * kernel[k - i + fr, l - j + fr]
+        for dk, dl in ti.ndrange(fh, fh):
+            k = reflect_101(i + dk - fr, h)
+            l = reflect_101(j + dl - fr, w)  # noqa: E741
+            total += img[k, l] * kernel[dk, dl]
 
         img_out[i, j] = total
+
+
+@ti.func
+def reflect_101(idx, n):
+    # Reflects an out-of-range index as OpenCV's BORDER_REFLECT_101 (gfedcb|abcdefgh|gfedcba)
+    # Valid for offsets smaller than n (the filter radius is much smaller than the grid)
+    r = idx
+    if r < 0:
+        r = -r
+    if r >= n:
+        r = 2 * n - 2 - r
+    return r
 
 
 @ti.func

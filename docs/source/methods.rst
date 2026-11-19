@@ -444,6 +444,8 @@ where:
 
 Solving this system gives the converged solution in one shot, bypassing all the iterative steps. However, the main limitation of this solver is that it only works when :math:`\phi*\nabla(f(u_t))` is truly linear in :math:`f(u_t)`. For methods where the stencil coefficients themselves depend on f (as in :ref:`TV <tv_inpainter>` or :ref:`AMLE <amle_inpainter>` below), there is no fixed matrix :math:`A` and the approach is invalid. Therefore, this solver is only available for the :ref:`harmonic <harmonic_inpainter>` and :ref:`CCST <ccst_inpainter>` inpainters.
 
+This is the default solver for these two inpainters. To use the :ref:`pde_iterative_solver` instead, pass ``--no-use_direct_solver``.
+
 Parameters
 ++++++++++
 

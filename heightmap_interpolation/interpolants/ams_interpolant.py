@@ -115,6 +115,12 @@ class AMSInterpolant(Interpolant):
                     positions_gradients.shape[0], np.asarray(z).size
                 )
             )
+            if positions_gradients.shape[0] == 0:
+                print(
+                    "[WARNING] No reliable gradient could be estimated at the input "
+                    "points, only the values will be fitted. Consider relaxing "
+                    "--gradient_min_planarity or --gradient_max_distance."
+                )
 
         # Create the interpolant
         points = np.column_stack((x, y))

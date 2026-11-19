@@ -25,9 +25,6 @@ import numpy as np
 
 from heightmap_interpolation.inpainting.amle_inpainter import AMLEInpainter
 from heightmap_interpolation.inpainting.ccst_inpainter import CCSTInpainter
-from heightmap_interpolation.inpainting.exemplar_based_inpainter import (
-    ExemplarBasedInpainter,
-)
 from heightmap_interpolation.inpainting.opencv_inpainter import (
     OpenCVInpainter,
     OpenCVXPhotoInpainter,
@@ -35,11 +32,12 @@ from heightmap_interpolation.inpainting.opencv_inpainter import (
 
 # Inpainting methods
 from heightmap_interpolation.inpainting.sobolev_inpainter import SobolevInpainter
-from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
-    TaichiFDPDEInpainter,
-)
 from heightmap_interpolation.inpainting.tv_inpainter import TVInpainter
-from heightmap_interpolation.interpolants.ams_interpolant import AMSInterpolant
+
+# NOTE: methods depending on optional or platform-specific compiled packages
+# (AMS -> py_ams_point_interpolant, GPU backend -> Taichi, EBI -> exemplar_based_inpainting)
+# are imported lazily where used, so that a missing/broken package only affects the
+# methods that actually need it.
 from heightmap_interpolation.interpolants.cubic_interpolant import CubicInterpolant
 from heightmap_interpolation.interpolants.linear_interpolant import LinearInterpolant
 from heightmap_interpolation.interpolants.nearest_neighbor_interpolant import (
@@ -406,6 +404,8 @@ def run_scattered_interpolation(
             show_loss_plots=params.show_loss_plots,
         )
     elif method == "ams":
+        from heightmap_interpolation.interpolants.ams_interpolant import AMSInterpolant
+
         suggested_scale = AMSInterpolant.preferred_scale_factor(
             xs_ref, ys_ref, xs_int, ys_int
         )
@@ -713,8 +713,10 @@ def add_common_fd_pde_inpainters_args(parser):
     parser.add_argument(
         "--use_direct_solver",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use a direct solver instead of an iterative one",
+        default=None,
+        help="Use a direct solver instead of an iterative one. Enabled by "
+        "default for the methods supporting it (harmonic, ccst); use "
+        "--no-use_direct_solver to force the iterative solver",
     )
     parser.add_argument(
         "--direct_solver",
@@ -1336,7 +1338,9 @@ def add_subparsers(subparsers):
     parser_ebi.add_argument(
         "--patch_preference",
         type=str,
-        help='When more than a patch has the same similarity score, this parameter selects which one to choose. Available: "any", "closest", "random".',
+        default="closest",
+        choices=["any", "closest", "random"],
+        help='When more than a patch has the same similarity score, this parameter selects which one to choose. Available: "any", "closest" (default), "random".',
     )
 
 
@@ -1355,6 +1359,24 @@ def create_inpainter_from_params(params):
             raise ValueError(
                 "Currently the GPU backend is only available for harmonic and ccst methods."
             )
+        if options["backend"] == "gpu":
+            from heightmap_interpolation.inpainting.taichi_backend import (
+                TAICHI_AVAILABLE,
+                TAICHI_IMPORT_ERROR,
+            )
+
+            if TAICHI_AVAILABLE:
+                from heightmap_interpolation.inpainting.taichi_fd_pde_inpainter import (
+                    TaichiFDPDEInpainter,
+                )
+            else:
+                print(
+                    "[WARNING] The GPU backend is not available ("
+                    + str(TAICHI_IMPORT_ERROR)
+                    + "). Install it with 'pip install heightmap_interpolation[gpu]'. "
+                    "Falling back to the CPU backend."
+                )
+                options["backend"] = "cpu"
     if params.subparser_name.lower() == "harmonic":
         if options["backend"] == "gpu":
             options["method"] = "harmonic"
@@ -1389,6 +1411,10 @@ def create_inpainter_from_params(params):
             "show_progress_bar": params.show_progress_bar,
             "patch_preference": params.patch_preference,
         }
+        from heightmap_interpolation.inpainting.exemplar_based_inpainter import (
+            ExemplarBasedInpainter,
+        )
+
         inpainter = ExemplarBasedInpainter(**options)
 
     return inpainter

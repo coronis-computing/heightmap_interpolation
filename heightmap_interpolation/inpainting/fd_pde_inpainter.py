@@ -52,7 +52,8 @@ class FDPDEInpainter(ABC):
         convolver_type (str): the convolver used for all the convolutions required by the solver.
         debug_dir (str): a debug directory where the intermediate steps will be rendered. Useful to create a video of the evolution of the solver.
         use_direct_solver (bool): if True, solve as a sparse linear system instead of
-            time-stepping (only valid for linear PDEs).
+            time-stepping (only valid for linear PDEs). If None (default), it is
+            enabled for the methods supporting it (supports_direct_solver).
         direct_solver (str): sparse solver to use when use_direct_solver=True.
             Either 'cg' (conjugate gradient, for SPD systems) or 'minres'
             (for symmetric indefinite). Default: 'cg'.
@@ -89,7 +90,9 @@ class FDPDEInpainter(ABC):
         self.init_with = kwargs.pop("init_with", "zeros")
         self.convolver_type = kwargs.pop("convolver", "masked")
         self.convolver = Convolver(self.convolver_type)
-        self.use_direct_solver = kwargs.pop("use_direct_solver", True)
+        self.use_direct_solver = kwargs.pop("use_direct_solver", None)
+        if self.use_direct_solver is None:
+            self.use_direct_solver = self.supports_direct_solver
         self.direct_solver = kwargs.pop("direct_solver", "cg")
         self.cg_term_thres = kwargs.pop("cg_term_thres", 1e-4)
         self.debug_dir = kwargs.pop("debug_dir", "")
@@ -168,6 +171,10 @@ class FDPDEInpainter(ABC):
         self.term_criteria_int = self.map_term_criteria_str_to_int.get(
             self.term_criteria, -1
         )
+        # Effective threshold used in the termination checks. Do not overwrite
+        # self.term_thres here, this function is called once per solve (e.g., at each
+        # level of the multigrid pyramid) and it would compound the scaling.
+        self.term_thres_eff = self.term_thres
         if self.term_criteria_int == 0:
             self.print_msg(
                 "* Termination criteria --> relative change = {:f}".format(
@@ -188,8 +195,10 @@ class FDPDEInpainter(ABC):
             self.print_msg("* Termination criteria --> absolute percent change:")
             self.print_msg(f"    - Abs. Z range: {z_range:f}")
             self.print_msg(f"    - Percent = {self.term_thres:f}")
-            self.term_thres = z_range * self.term_thres
-            self.print_msg(f"    - Terminate if absolute change < {self.term_thres:f}")
+            self.term_thres_eff = z_range * self.term_thres
+            self.print_msg(
+                f"    - Terminate if absolute change < {self.term_thres_eff:f}"
+            )
         else:
             raise ValueError("Unknown termination criteria!")
 
@@ -243,7 +252,7 @@ class FDPDEInpainter(ABC):
             print(
                 "[WARNING] A multigrid solver was requested, but the size of the image is too small, defaulting to a single-scale inpainting"
             )
-            return self.inpaint_grid(image, mask)
+            return self.inpaint_grid(self.initializer.initialize(image, mask), mask)
 
         # Create the multi-scale pyramid
         self.print_start("Creating the image pyramid... ")
@@ -324,13 +333,11 @@ class FDPDEInpainter(ABC):
                 inpainted_lower_scale, dsize=(image.shape[1], image.shape[0])
             )
 
-            # Special case: the first level of the pyramid may contain NaNs! (because we did not initialize it)
-            # This will make the masking below to fail, so remove and substitute by zeros
-            if level == 0 and np.any(np.isnan(image)):
-                image[np.isnan(image)] = 0
-
-            # Use the upscaled solution as initial guess
-            image = upscaled_inpainted_lower_scale * (~mask) + image * mask
+            # Use the upscaled solution as initial guess for the unknown cells.
+            # NOTE: use np.where instead of "a * (~mask) + b * mask": the pyramid levels
+            # contain NaNs at the unknown cells and NaN * 0 = NaN, which would propagate
+            # through the whole solution.
+            image = np.where(mask, image, upscaled_inpainted_lower_scale)
 
             # Prepare the debug folder
             if self.debug_dir:
@@ -550,7 +557,7 @@ class FDPDEInpainter(ABC):
             diff = buf.max()
         else:
             raise RuntimeError("Invalid termination criteria!")
-        terminate = diff < self.term_thres
+        terminate = diff < self.term_thres_eff
         return terminate, diff
 
     def fast_norm(self, vector):

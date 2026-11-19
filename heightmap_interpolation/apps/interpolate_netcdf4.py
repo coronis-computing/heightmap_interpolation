@@ -159,7 +159,8 @@ def interpolate(params):
             params.input_file,
             params.output_file,
             elevation_int,
-            mask_int,
+            # Only the missing cells within the work areas are interpolated
+            np.logical_and(mask_int, np.any(work_areas, axis=2)),
             params.elevation_var,
             (params.x_dim if params.x_dim else params.x_var),
             (params.y_dim if params.y_dim else params.y_var),
