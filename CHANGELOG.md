@@ -2,12 +2,12 @@
 
 Starting from v1.1.0, all version-specific notable changes to this project will be documented in this file.
 
-## (version number pending)
+## v1.2.0
 
 * The GPU backend of the FD-PDE inpainters (`--backend gpu`) is now an optional dependency: install it with `pip install heightmap_interpolation[gpu]`. It now uses [Taichi Forge](https://pypi.org/project/taichi-forge/), a maintained fork of Taichi supporting Python 3.10-3.14 (the original `taichi` package is still accepted if installed). If no Taichi-compatible package is available, `--backend gpu` falls back to the CPU implementation with a warning, and if the requested GPU architecture cannot be initialized, Taichi falls back to `cpu`.
 * Methods depending on compiled/optional packages (`ams`, the GPU backend, `ebi`) are now imported only when used, so a missing or broken package no longer prevents the rest of the methods from running.
 * Requires `py_ams_point_interpolant>=0.1.1`, which fixes the import of the `ams` method on Windows and provides wheels for Python 3.13 and 3.14.
-* OpenCV is now restricted to versions < 5 (`opencv-python-headless`, and `opencv-contrib-python-headless`/`opencv-python` in the `experimental` extra): the `exemplar-based-inpainting` package used by `ebi` does not work with OpenCV 5.
+* The `experimental` extra restricts OpenCV to versions < 5, since the `exemplar-based-inpainting` package used by `ebi` does not work with OpenCV 5. The core package also works with OpenCV 5.
 * Removed the dependency on `fiona`, which has no wheels for Python 3.14: now requires `geopandas>=1.0`, which reads the `--areas` KML files through `pyogrio`.
 * Fixed the `ccst`/`ccst-ti` selection in `fd_pde_inpainter_factory.create_fd_pde_inpainter`.
 * Fixed the multigrid solver (`--mgs_levels` > 1, the default) of the GPU backend (`--backend gpu`) of `harmonic` and `ccst`, which produced wrong results: the image pyramid now decimates instead of interpolating (unknown cells were blended into known ones), NaNs no longer propagate through the upscaled initial guesses, and the termination threshold no longer compounds across pyramid levels.

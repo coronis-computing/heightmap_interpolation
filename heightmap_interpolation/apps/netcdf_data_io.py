@@ -22,14 +22,6 @@ import cv2
 import geopandas as gpd
 import netCDF4 as nc
 import numpy as np
-try:
-    # Only needed when geopandas reads through fiona (geopandas < 1.0, or fiona
-    # explicitly selected). geopandas >= 1.0 uses pyogrio, which reads KML as is.
-    from fiona.drvsupport import supported_drivers
-
-    supported_drivers["KML"] = "rw"
-except ImportError:
-    pass
 
 
 def imageToArray(i):
